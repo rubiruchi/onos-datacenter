@@ -24,18 +24,7 @@ import org.apache.felix.scr.annotations.Property;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.Service;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
-import org.onlab.packet.Ethernet;
-import org.onlab.packet.ICMP;
-import org.onlab.packet.ICMP6;
-import org.onlab.packet.IPv4;
-import org.onlab.packet.IPv6;
-import org.onlab.packet.Ip4Prefix;
-import org.onlab.packet.Ip6Prefix;
-import org.onlab.packet.MacAddress;
-import org.onlab.packet.TCP;
-import org.onlab.packet.TpPort;
-import org.onlab.packet.UDP;
-import org.onlab.packet.VlanId;
+import org.onlab.packet.*;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Tools;
 import org.onosproject.cfg.ComponentConfigService;
@@ -89,12 +78,16 @@ import java.util.Set;
 
 import static org.slf4j.LoggerFactory.getLogger;
 
+
+import org.onosproject.net.apps.TenantsMapService;
+import org.onlab.packet.IpAddress;
+
 /**
  * Sample reactive forwarding application.
  */
 @Component(immediate = true)
 @Service(value = ReactiveForwarding.class)
-public class ReactiveForwarding {
+public class ReactiveForwarding implements TenantsMapService {
 
     private static final int DEFAULT_TIMEOUT = 10;
     private static final int DEFAULT_PRIORITY = 10;
@@ -241,6 +234,12 @@ public class ReactiveForwarding {
     public void modified(ComponentContext context) {
         readComponentConfiguration(context);
         requestIntercepts();
+    }
+
+    @Override
+    public Map<IpAddress, Integer> getTenants() {
+
+        return null;
     }
 
     private void updateTenants() {
