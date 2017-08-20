@@ -12,8 +12,8 @@ osgi_jar_with_tests (
 )
 
 onos_app (
-    title = 'Reactive Forwarding App',
+    title = 'Datacenter App',
     category = 'Traffic Steering',
     url = 'http://onosproject.org',
-    description = 'Reactive forwarding application using flow objective subsystem.',
+    description = 'Datacenter App',
 )

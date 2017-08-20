@@ -220,6 +220,9 @@ public class ReactiveForwarding {
         readComponentConfiguration(context);
         requestIntercepts();
 
+        // Load Tenants information
+        updateTenants();
+
         log.info("Started", appId.id());
     }
 
@@ -239,6 +242,11 @@ public class ReactiveForwarding {
         readComponentConfiguration(context);
         requestIntercepts();
     }
+
+    private void updateTenants() {
+        
+    }
+
 
     /**
      * Request packet in via packet service.
