@@ -198,6 +198,7 @@ ONOS_APPS = [
     '//apps/network-troubleshoot:onos-apps-network-troubleshoot-oar',
     '//apps/l3vpn:onos-apps-l3vpn-oar',
     '//apps/openroadm:onos-apps-openroadm-oar',
+    '//apps/datacenter:onos-apps-datacenter-oar',
 ]
 
 MODELS = [
@@ -220,6 +221,7 @@ APP_JARS = [
     '//apps/vtn/sfcmgr:onos-apps-vtn-sfcmgr',
     '//apps/vtn/vtnmgr:onos-apps-vtn-vtnmgr',
     '//apps/vtn/vtnweb:onos-apps-vtn-vtnweb',
+    '//apps/datacenter:onos-apps-datacenter',
 ]
 
 APPS = ONOS_DRIVERS + ONOS_PROVIDERS + ONOS_APPS + MODELS
