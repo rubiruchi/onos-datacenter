@@ -75,19 +75,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.slf4j.LoggerFactory.getLogger;
 
 
 import org.onosproject.net.apps.TenantsMapService;
 import org.onlab.packet.IpAddress;
+import org.onosproject.incubator.net.virtual.TenantId;
+import java.io.IOException;
+import java.nio.file.Files;
+// Avoid ambiguous reference
+//import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.stream.Stream;
 
 /**
  * Sample reactive forwarding application.
  */
 @Component(immediate = true)
 @Service(value = ReactiveForwarding.class)
-public class ReactiveForwarding implements TenantsMapService {
+public class ReactiveForwarding implements TenantsMapService<TenantId> {
 
     private static final int DEFAULT_TIMEOUT = 10;
     private static final int DEFAULT_PRIORITY = 10;
@@ -192,6 +200,16 @@ public class ReactiveForwarding implements TenantsMapService {
     private final TopologyListener topologyListener = new InternalTopologyListener();
 
 
+    // Tenants file path
+    private static final String DEFAULT_TENANTS_FILE = "";
+
+    @Property(name = "tenantsFile", value = DEFAULT_TENANTS_FILE,
+            label = "Enable record metrics for reactive forwarding")
+    private String tenantsFile = DEFAULT_TENANTS_FILE;
+    // Tenants Map:
+    // We're using a ConcurrentHashMap since it's the fastest Collection in get operations
+    private final Map<IpAddress, TenantId> hostTenantMap = new ConcurrentHashMap<>();
+
     @Activate
     public void activate(ComponentContext context) {
         KryoNamespace.Builder metricSerializer = KryoNamespace.newBuilder()
@@ -237,13 +255,37 @@ public class ReactiveForwarding implements TenantsMapService {
     }
 
     @Override
-    public Map<IpAddress, Integer> getTenants() {
+    public Map<IpAddress, TenantId> getTenants() {
 
         return null;
     }
 
+    /**
+     * Read tenants from file and update cache
+     */
     private void updateTenants() {
-        
+        log.info("UpdateTenants: triggered.");
+        // Clear up all entries in the map
+        hostTenantMap.clear();
+
+        // Read tenants file
+        java.nio.file.Path path = Paths.get(tenantsFile);
+        try (Stream<String> lines = Files.lines(path)) {
+            lines.forEach(s -> {
+
+                String words[] = s.split(",");
+                TenantId tenant = TenantId.tenantId(words[0]);
+
+                for (int i = 1; i < words.length; i++) {
+                    hostTenantMap.put(/* IP */ IpAddress.valueOf(words[i]), tenant);
+                }
+
+            });
+        } catch (IOException ex) {
+            log.error("UpdateTenants: " + ex.toString());
+        }
+
+        log.error("UpdateTenants: done!");
     }
 
 
