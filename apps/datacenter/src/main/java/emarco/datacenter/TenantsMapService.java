@@ -1,17 +1,19 @@
 /*
 */
 
-package org.onosproject.net.apps;
+package emarco.datacenter;
 
 import java.util.Map;
+
 import org.onlab.packet.IpAddress;
+import org.onosproject.incubator.net.virtual.TenantId;
 
 
 /**
  * TenantsMapService
  * Keeps track of the tenant each host belongs to.
  */
-public interface TenantsMapService/*<T>*/ {
+public interface TenantsMapService {
 
     /**
      * Get the endpoints of the host-to-host intents that were installed.
@@ -19,10 +21,12 @@ public interface TenantsMapService/*<T>*/ {
      * @return maps of source to destination
      */
 
-    public Map<IpAddress, Integer> getTenants();
+    Map<IpAddress, TenantId> getTenants();
 
-    public void updateTenants();
+    void updateTenants();
 
-    public void updateTenants(String filePath);
+    void updateTenants(String filePath);
+
+    boolean canHostsCommunicate(IpAddress h1, IpAddress h2);
 
 }

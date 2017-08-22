@@ -14,36 +14,27 @@
  * limitations under the License.
  */
 
-package org.onosproject.cli.net;
+package emarco.datacenter;
 
+import emarco.datacenter.TenantsMapService;
 import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
-import org.onlab.packet.IpAddress;
 import org.onosproject.cli.AbstractShellCommand;
-import org.onosproject.incubator.net.virtual.TenantId;
-import org.onosproject.net.apps.TenantsMapService;
 
-/**
- * A demo service that lists the endpoints for which intents are installed.
- */
-@Component(immediate=true)
-@Command(scope = "onos", name = "tenantsmap",
-        description = "Updates the Tenants Map")
+@Command(scope = "emarco.datacenter", name = "tenantsmap", description = "Updates the Tenants Map")
 public class TenantsMapCommand extends AbstractShellCommand {
 
-    @Argument(index = 0, name = "filePath", description = "Path of the Tenants file",
-            required = false, multiValued = false)
+    @Argument(index = 0, name = "filePath", description = "Path of the Tenants file", required = false, multiValued = false)
     private String filePath = null;
 
-    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected TenantsMapService/*<IpAddress>*/ tenantsMapService;
+    protected TenantsMapService tenantsMapService;
 
     @Override
     protected void execute() {
-        tenantsMapService = get(TenantsMapService.class);
+        tenantsMapService = AbstractShellCommand.get(ReactiveForwarding.class);
         tenantsMapService.updateTenants(filePath);
 
         tenantsMapService.getTenants().forEach((ip, tenant) -> {
