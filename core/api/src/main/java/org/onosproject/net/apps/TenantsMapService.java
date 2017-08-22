@@ -21,4 +21,8 @@ public interface TenantsMapService<T> {
 
     public Map<IpAddress, T> getTenants();
 
+    public void updateTenants();
+
+    public void updateTenants(String filePath);
+
 }

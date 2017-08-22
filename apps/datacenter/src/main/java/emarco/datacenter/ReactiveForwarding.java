@@ -256,20 +256,23 @@ public class ReactiveForwarding implements TenantsMapService<TenantId> {
 
     @Override
     public Map<IpAddress, TenantId> getTenants() {
-
-        return null;
+        return hostTenantMap;
     }
 
     /**
      * Read tenants from file and update cache
      */
-    private void updateTenants() {
+    public void updateTenants() {
+        updateTenants(tenantsFile);
+    }
+
+    public void updateTenants(String inputTenantsFile) {
         log.info("UpdateTenants: triggered.");
         // Clear up all entries in the map
         hostTenantMap.clear();
 
         // Read tenants file
-        java.nio.file.Path path = Paths.get(tenantsFile);
+        java.nio.file.Path path = Paths.get(inputTenantsFile);
         try (Stream<String> lines = Files.lines(path)) {
             lines.forEach(s -> {
 
@@ -277,7 +280,7 @@ public class ReactiveForwarding implements TenantsMapService<TenantId> {
                 TenantId tenant = TenantId.tenantId(words[0]);
 
                 for (int i = 1; i < words.length; i++) {
-                    hostTenantMap.put(/* IP */ IpAddress.valueOf(words[i]), tenant);
+                    hostTenantMap.put(IpAddress.valueOf(words[i]), tenant);
                 }
 
             });
@@ -285,7 +288,9 @@ public class ReactiveForwarding implements TenantsMapService<TenantId> {
             log.error("UpdateTenants: " + ex.toString());
         }
 
-        log.error("UpdateTenants: done!");
+        log.info("UpdateTenants Map: " + hostTenantMap.toString());
+
+        log.info("UpdateTenants: done!");
     }
 
 
