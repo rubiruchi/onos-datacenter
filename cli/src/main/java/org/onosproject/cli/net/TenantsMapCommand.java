@@ -16,16 +16,20 @@
 
 package org.onosproject.cli.net;
 
+import org.apache.felix.scr.annotations.Component;
 import org.apache.felix.scr.annotations.Reference;
 import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
+import org.onlab.packet.IpAddress;
 import org.onosproject.cli.AbstractShellCommand;
+import org.onosproject.incubator.net.virtual.TenantId;
 import org.onosproject.net.apps.TenantsMapService;
 
 /**
  * A demo service that lists the endpoints for which intents are installed.
  */
+@Component(immediate=true)
 @Command(scope = "onos", name = "tenantsmap",
         description = "Updates the Tenants Map")
 public class TenantsMapCommand extends AbstractShellCommand {
@@ -35,10 +39,11 @@ public class TenantsMapCommand extends AbstractShellCommand {
     private String filePath = null;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
-    protected TenantsMapService tenantsMapService;
+    protected TenantsMapService/*<IpAddress>*/ tenantsMapService;
 
     @Override
     protected void execute() {
+        tenantsMapService = get(TenantsMapService.class);
         tenantsMapService.updateTenants(filePath);
 
         tenantsMapService.getTenants().forEach((ip, tenant) -> {

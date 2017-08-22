@@ -95,7 +95,7 @@ import java.util.stream.Stream;
  */
 @Component(immediate = true)
 @Service(value = ReactiveForwarding.class)
-public class ReactiveForwarding implements TenantsMapService<TenantId> {
+public class ReactiveForwarding implements TenantsMapService/*<TenantId>*/ {
 
     private static final int DEFAULT_TIMEOUT = 10;
     private static final int DEFAULT_PRIORITY = 10;
@@ -201,14 +201,14 @@ public class ReactiveForwarding implements TenantsMapService<TenantId> {
 
 
     // Tenants file path
-    private static final String DEFAULT_TENANTS_FILE = "";
+    private static final String DEFAULT_TENANTS_FILE = "./tenants.csv";
 
     @Property(name = "tenantsFile", value = DEFAULT_TENANTS_FILE,
             label = "Enable record metrics for reactive forwarding")
     private String tenantsFile = DEFAULT_TENANTS_FILE;
     // Tenants Map:
     // We're using a ConcurrentHashMap since it's the fastest Collection in get operations
-    private final Map<IpAddress, TenantId> hostTenantMap = new ConcurrentHashMap<>();
+    private final Map<IpAddress, Integer/* TenantId*/> hostTenantMap = new ConcurrentHashMap<>();
 
     @Activate
     public void activate(ComponentContext context) {
@@ -233,6 +233,7 @@ public class ReactiveForwarding implements TenantsMapService<TenantId> {
 
         // Load Tenants information
         updateTenants();
+        log.info("DATACENTER", appId.id());
 
         log.info("Started", appId.id());
     }
@@ -255,7 +256,7 @@ public class ReactiveForwarding implements TenantsMapService<TenantId> {
     }
 
     @Override
-    public Map<IpAddress, TenantId> getTenants() {
+    public Map<IpAddress, Integer /*TenantId*/> getTenants() {
         return hostTenantMap;
     }
 
@@ -280,7 +281,7 @@ public class ReactiveForwarding implements TenantsMapService<TenantId> {
                 TenantId tenant = TenantId.tenantId(words[0]);
 
                 for (int i = 1; i < words.length; i++) {
-                    hostTenantMap.put(IpAddress.valueOf(words[i]), tenant);
+                    hostTenantMap.put(IpAddress.valueOf(words[i]), Integer.parseInt(words[0])/*tenant*/);
                 }
 
             });

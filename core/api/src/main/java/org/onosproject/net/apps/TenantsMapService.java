@@ -11,7 +11,7 @@ import org.onlab.packet.IpAddress;
  * TenantsMapService
  * Keeps track of the tenant each host belongs to.
  */
-public interface TenantsMapService<T> {
+public interface TenantsMapService/*<T>*/ {
 
     /**
      * Get the endpoints of the host-to-host intents that were installed.
@@ -19,7 +19,7 @@ public interface TenantsMapService<T> {
      * @return maps of source to destination
      */
 
-    public Map<IpAddress, T> getTenants();
+    public Map<IpAddress, Integer> getTenants();
 
     public void updateTenants();
 
