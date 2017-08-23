@@ -591,6 +591,8 @@ public class ReactiveForwarding implements TenantsMapService {
                         .withPriority(flowPriority)
                         //.makeTemporary(TIMEOUT_SEC)
                         .add());
+
+                return;
             }
             // else: hosts belong to the same Tenant (or IPv* filtering is disabled).
             // Proceed with regular packet processing
