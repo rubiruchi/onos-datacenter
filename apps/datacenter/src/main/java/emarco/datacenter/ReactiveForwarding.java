@@ -697,7 +697,7 @@ public class ReactiveForwarding implements TenantsMapService {
 
         // Hope pseudorandom number generation doesn't performance too much
         return (forwardPaths.size() > 0) ?
-                forwardPaths.get(ThreadLocalRandom.current().nextInt(0, forwardPaths.size() + 1))
+                forwardPaths.get(ThreadLocalRandom.current().nextInt(0, forwardPaths.size()))
                 : null;
         //return lastPath;
     }
