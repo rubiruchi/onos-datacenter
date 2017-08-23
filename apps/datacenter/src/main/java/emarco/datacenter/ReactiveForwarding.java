@@ -69,12 +69,8 @@ import org.onosproject.store.service.EventuallyConsistentMap;
 import org.onosproject.store.service.WallClockTimestamp;
 import org.onosproject.store.service.MultiValuedTimestamp;
 import org.slf4j.Logger;
-import java.util.Dictionary;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.slf4j.LoggerFactory.getLogger;
@@ -87,6 +83,7 @@ import java.nio.file.Files;
 // Avoid ambiguous reference
 //import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Stream;
 
 /**
@@ -232,7 +229,6 @@ public class ReactiveForwarding implements TenantsMapService {
 
         // Load Tenants information
         //updateTenants();
-        log.info("DATACENTER", appId.id());
 
         log.info("Started", appId.id());
     }
@@ -605,14 +601,25 @@ public class ReactiveForwarding implements TenantsMapService {
     // Selects a path from the given set that does not lead back to the
     // specified port if possible.
     private Path pickForwardPathIfPossible(Set<Path> paths, PortNumber notToPort) {
-        Path lastPath = null;
+        //Path lastPath = null;
+
+        List<Path> forwardPaths = new ArrayList<>();
+        //Path forwardPaths[];
+
         for (Path path : paths) {
-            lastPath = path;
+            //lastPath = path;
             if (!path.src().port().equals(notToPort)) {
-                return path;
+                //return path;
+                //forwardPaths.add(path);
+                forwardPaths.add(path);
             }
         }
-        return lastPath;
+
+        // Hope pseudorandom number generation doesn't performance too much
+        return (forwardPaths.size() > 0) ?
+                forwardPaths.get(ThreadLocalRandom.current().nextInt(0, forwardPaths.size() + 1))
+                : null;
+        //return lastPath;
     }
 
     // Floods the specified packet if permissible.
