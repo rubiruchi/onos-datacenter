@@ -256,6 +256,13 @@ public class ReactiveForwarding {
     }
 
     /**
+     * Cleans up all the Flow Rules installed by this app.
+     */
+    public void cleanAppFlowRules() {
+        flowRuleService.removeFlowRulesById(appId);
+    }
+
+    /**
      * Request packet in via packet service.
      */
     private void requestIntercepts() {

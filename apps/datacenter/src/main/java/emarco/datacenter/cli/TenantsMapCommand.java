@@ -16,6 +16,7 @@
 
 package emarco.datacenter.cli;
 
+import emarco.datacenter.ReactiveForwarding;
 import emarco.datacenter.TenantsMapProvider;
 import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
@@ -29,6 +30,8 @@ public class TenantsMapCommand extends AbstractShellCommand {
 
     protected TenantsMapProvider tenantsMapService;
 
+    protected ReactiveForwarding reactiveForwarding;
+
     @Override
     protected void execute() {
         tenantsMapService = AbstractShellCommand.get(TenantsMapProvider.class);
@@ -37,5 +40,9 @@ public class TenantsMapCommand extends AbstractShellCommand {
         tenantsMapService.getTenants().forEach((ip, tenant) -> {
             print("Host %s belongs to Tenant %s", ip, tenant);
         });
+
+        reactiveForwarding = AbstractShellCommand.get(ReactiveForwarding.class);
+        print("Clearing up past flow rules.");
+        reactiveForwarding.cleanAppFlowRules();
     }
 }
