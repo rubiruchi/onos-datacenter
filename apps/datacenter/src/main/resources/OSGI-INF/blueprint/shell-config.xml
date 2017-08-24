@@ -26,7 +26,7 @@
     <!--Tenants command-->
     <command-bundle xmlns="http://karaf.apache.org/xmlns/shell/v1.1.0">
         <command>
-            <action class="emarco.datacenter.TenantsMapCommand"/>
+            <action class="emarco.datacenter.cli.TenantsMapCommand"/>
         </command>
     </command-bundle>
 </blueprint>

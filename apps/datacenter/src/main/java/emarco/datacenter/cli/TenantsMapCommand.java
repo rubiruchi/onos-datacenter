@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-package emarco.datacenter;
+package emarco.datacenter.cli;
 
+import emarco.datacenter.TenantsMapProvider;
 import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
 import org.onosproject.cli.AbstractShellCommand;
