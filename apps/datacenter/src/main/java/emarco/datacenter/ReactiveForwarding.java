@@ -475,7 +475,7 @@ public class ReactiveForwarding {
             boolean filter = false;
             IpAddress ipSrcAddr;
             IpAddress ipDestAddr;
-            TrafficSelector selector = null;
+            TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
 
             // Should we filter IPv4 traffic?
             if (filterIpv4 && ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
@@ -486,15 +486,16 @@ public class ReactiveForwarding {
                 if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
                     filter = true;
 
-                    Ip4Prefix matchIpSrcPrefix =
+                    Ip4Prefix matchIpv4SrcPrefix =
                             Ip4Prefix.valueOf(ipv4Packet.getSourceAddress(),
                                     Ip4Prefix.MAX_MASK_LENGTH);
-                    Ip4Prefix matchIpDstPrefix =
+                    Ip4Prefix matchIpv4DstPrefix =
                             Ip4Prefix.valueOf(ipv4Packet.getDestinationAddress(),
                                     Ip4Prefix.MAX_MASK_LENGTH);
 
-                    selector = DefaultTrafficSelector.builder()
-                            .matchIPSrc(matchIpSrcPrefix).matchIPDst(matchIpDstPrefix).build();
+                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV4)
+                            .matchIPSrc(matchIpv4SrcPrefix)
+                            .matchIPDst(matchIpv4DstPrefix);
 
                 }
             }
@@ -508,15 +509,16 @@ public class ReactiveForwarding {
                 if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
                     filter = true;
 
-                    Ip6Prefix matchIpSrcPrefix =
+                    Ip6Prefix matchIpv6SrcPrefix =
                             Ip6Prefix.valueOf(ipv6Packet.getSourceAddress(),
                                     Ip6Prefix.MAX_MASK_LENGTH);
-                    Ip6Prefix matchIpDstPrefix =
+                    Ip6Prefix matchIpv6DstPrefix =
                             Ip6Prefix.valueOf(ipv6Packet.getDestinationAddress(),
                                     Ip6Prefix.MAX_MASK_LENGTH);
 
-                    selector = DefaultTrafficSelector.builder()
-                            .matchIPSrc(matchIpSrcPrefix).matchIPDst(matchIpDstPrefix).build();
+                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV6)
+                            .matchIPSrc(matchIpv6SrcPrefix)
+                            .matchIPDst(matchIpv6DstPrefix);
                 }
             }
 
@@ -528,12 +530,12 @@ public class ReactiveForwarding {
                         .drop().build();
 
                 flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
-                        .withSelector(selector)
+                        .withSelector(selectorBuilder.build())
                         .withTreatment(drop)
                         .withPriority(flowPriority)
                         .withFlag(ForwardingObjective.Flag.VERSATILE)
                         .fromApp(appId)
-                        .makeTemporary(flowTimeout)
+                        //.makeTemporary(flowTimeout)
                         .add()
                 );
 
