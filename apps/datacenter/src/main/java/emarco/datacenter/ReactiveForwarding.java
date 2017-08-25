@@ -212,6 +212,11 @@ public class ReactiveForwarding {
     private boolean filterIpv6 = true;
 
 
+    // Host Migration
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected MigrateHostProvider migrateHostService;
+
+
     @Activate
     public void activate(ComponentContext context) {
         KryoNamespace.Builder metricSerializer = KryoNamespace.newBuilder()
@@ -256,6 +261,22 @@ public class ReactiveForwarding {
         requestIntercepts();
     }
 
+    public boolean migrate(IpAddress srcIP, IpAddress dstIP) {
+
+        // Check if Migration Service handled request correctly
+        if (migrateHostService.migrate(srcIP, dstIP)) {
+
+            // then clean up all rules related to the source host
+            cleanAppFlowRulesByIP(srcIP, new Criterion.Type[] {
+                    Criterion.Type.IPV4_DST,
+                    Criterion.Type.IPV6_DST
+            });
+
+            return true;
+        }
+        return false;
+    }
+
     /**
      * Cleans up all the Flow Rules installed by this app.
      */
@@ -266,30 +287,33 @@ public class ReactiveForwarding {
     /**
      * Redirects IP traffic from source Host to destination Host.
      */
-    public void migrate(IpAddress srcIP, IpAddress dstIP) {
+    public void cleanAppFlowRulesByIP(IpAddress targetIP, Criterion.Type[] criteria) {
 
-        // Check if hosts belong to the same Tenant
-        if (!tenantsMapService.canHostsCommunicate(srcIP, dstIP)) return;
+        // Convert slow-access array to faster collection
+        Map<Criterion.Type, Boolean> criteriaMap = new ConcurrentHashMap<>();
+        for (Criterion.Type c : criteria) {
+            criteriaMap.put(c, true);
+        }
 
         // Clean up all the Flow Rules installed by this app involving the source host as destination
-
         for (FlowEntry r : flowRuleService.getFlowEntriesById(appId)) {
-            boolean matchesSrc = false;
+
             for (Instruction i : r.treatment().allInstructions()) {
                 if (i.type() == Instruction.Type.OUTPUT) {
-                    // if the flow has matching src IPV4 or IPV6
+                    // check if the flow has matching criterion
                     for (Criterion cr : r.selector().criteria()) {
-                        if (((cr.type() == Criterion.Type.IPV4_DST) || (cr.type() == Criterion.Type.IPV6_DST)) &&
-                            ((IPCriterion) cr).ip().equals(srcIP)) {
+                        if ((criteriaMap.containsKey(cr.type())) &&
+                            ((IPCriterion) cr).ip().equals(targetIP)) {
 
-                            log.trace("Removed flow rule from device: {}");
                             flowRuleService.removeFlowRules((FlowRule) r);
+                            log.trace("Removed flow rule");
 
                         }
                     }
                 }
             }
         }
+
     }
 
 
@@ -561,7 +585,6 @@ public class ReactiveForwarding {
 
             // Host are not allowed to communicate
             if (filter) {
-
 
                 TrafficTreatment drop = DefaultTrafficTreatment.builder()
                         .drop().build();

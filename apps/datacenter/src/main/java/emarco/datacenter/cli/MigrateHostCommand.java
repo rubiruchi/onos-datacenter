@@ -31,15 +31,24 @@ public class MigrateHostCommand extends AbstractShellCommand {
         IpAddress srcIP = IpAddress.valueOf(sSrcIP);
         IpAddress dstIP = IpAddress.valueOf(sDstIP);
 
-        if (tenantsMapProvider.canHostsCommunicate(srcIP, dstIP)) {
-
-            reactiveForwarding.migrate(srcIP, dstIP);
-
+        if (srcIP.version() != dstIP.version()) {
+            print("ERROR: You cannot mix different IP versions!");
+            return;
         }
-        else {
+        if (!tenantsMapProvider.canHostsCommunicate(srcIP, dstIP)) {
             print("ERROR: The specified Hosts do not belong to the same Tenant. Migration failed.");
+            return;
         }
 
+        reactiveForwarding.migrate(srcIP, dstIP);
+
+        /*flowRuleService.removeFlowRulesById();
+
+        tenantsMapService.getTenants().forEach((ip, tenant) -> {
+            print("Host %s belongs to Tenant %s", ip, tenant);
+        });*/
+
+        //HostId.hostId()
     }
 
 
