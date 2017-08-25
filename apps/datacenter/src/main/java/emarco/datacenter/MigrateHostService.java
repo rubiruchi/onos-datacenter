@@ -13,9 +13,9 @@ import org.onlab.packet.IpAddress;
  */
 public interface MigrateHostService {
 
-    Map<IpAddress, IpAddress> getMigrationMap();
-
     IpAddress hasMigrated(IpAddress source);
+
+    IpAddress isMigrated(IpAddress source);
 
     boolean migrate(IpAddress srcIP, IpAddress dstIP);
 

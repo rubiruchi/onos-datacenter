@@ -261,6 +261,9 @@ public class ReactiveForwarding {
         requestIntercepts();
     }
 
+    /**
+     * Handle host migration.
+     */
     public boolean migrate(IpAddress srcIP, IpAddress dstIP) {
 
         // Check if Migration Service handled request correctly
@@ -533,9 +536,11 @@ public class ReactiveForwarding {
 
             // Check if hosts are allowed to communicate
 
-            boolean filter = false;
+            boolean filter = false, redirect = false;
             IpAddress ipSrcAddr;
             IpAddress ipDestAddr;
+            IpAddress ipRedirAddr;
+            TrafficTreatment.Builder trafficTreatment = DefaultTrafficTreatment.builder();
             TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
 
             // Should we filter IPv4 traffic?
@@ -544,9 +549,25 @@ public class ReactiveForwarding {
                 ipSrcAddr = IpAddress.valueOf(ipv4Packet.getSourceAddress());
                 ipDestAddr = IpAddress.valueOf(ipv4Packet.getDestinationAddress());
 
-                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
-                    filter = true;
+                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) filter = true;
+                else {
+                    ipRedirAddr = migrateHostService.hasMigrated(ipDestAddr);
+                    if (ipRedirAddr != null) {
+                        redirect = true;
 
+                        trafficTreatment.setIpDst(ipRedirAddr);
+                    }
+
+                    ipRedirAddr = migrateHostService.isMigrated(ipDestAddr);
+
+                    if (ipRedirAddr != null) {
+                        redirect = true;
+
+                        trafficTreatment.setIpSrc(ipRedirAddr);
+                    }
+                }
+
+                if (filter || redirect) {
                     Ip4Prefix matchIpv4SrcPrefix =
                             Ip4Prefix.valueOf(ipv4Packet.getSourceAddress(),
                                     Ip4Prefix.MAX_MASK_LENGTH);
@@ -555,9 +576,9 @@ public class ReactiveForwarding {
                                     Ip4Prefix.MAX_MASK_LENGTH);
 
                     selectorBuilder.matchEthType(Ethernet.TYPE_IPV4)
-                            .matchIPSrc(matchIpv4SrcPrefix)
                             .matchIPDst(matchIpv4DstPrefix);
 
+                    if (filter) selectorBuilder.matchIPSrc(matchIpv4SrcPrefix);
                 }
             }
 
@@ -567,9 +588,13 @@ public class ReactiveForwarding {
                 ipSrcAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getSourceAddress());
                 ipDestAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getDestinationAddress());
 
-                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
-                    filter = true;
+                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) filter = true;
+                else {
+                    ipRedirAddr = migrateHostService.hasMigrated(ipDestAddr);
+                    if (ipRedirAddr != null) redirect = true;
+                }
 
+                if (filter || redirect) {
                     Ip6Prefix matchIpv6SrcPrefix =
                             Ip6Prefix.valueOf(ipv6Packet.getSourceAddress(),
                                     Ip6Prefix.MAX_MASK_LENGTH);
@@ -578,20 +603,20 @@ public class ReactiveForwarding {
                                     Ip6Prefix.MAX_MASK_LENGTH);
 
                     selectorBuilder.matchEthType(Ethernet.TYPE_IPV6)
-                            .matchIPSrc(matchIpv6SrcPrefix)
                             .matchIPDst(matchIpv6DstPrefix);
+
+                    if (filter) selectorBuilder.matchIPSrc(matchIpv6SrcPrefix);
                 }
             }
 
             // Host are not allowed to communicate
             if (filter) {
 
-                TrafficTreatment drop = DefaultTrafficTreatment.builder()
-                        .drop().build();
+                trafficTreatment = trafficTreatment.drop();
 
                 flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
                         .withSelector(selectorBuilder.build())
-                        .withTreatment(drop)
+                        .withTreatment(trafficTreatment.build())
                         .withPriority(flowPriority)
                         .withFlag(ForwardingObjective.Flag.VERSATILE)
                         .fromApp(appId)
@@ -602,6 +627,24 @@ public class ReactiveForwarding {
                 return;
             }
             // else: hosts belong to the same Tenant (or IPv* filtering is disabled).
+
+            if (redirect) {
+                
+
+                flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
+                        .withSelector(selectorBuilder.build())
+                        .withTreatment(trafficTreatment.build())
+                        .withPriority(flowPriority)
+                        .withFlag(ForwardingObjective.Flag.VERSATILE)
+                        .fromApp(appId)
+                        //.makeTemporary(flowTimeout)
+                        .add()
+                );
+
+                return;
+            }
+
+
             // Proceed with regular packet processing
 
 

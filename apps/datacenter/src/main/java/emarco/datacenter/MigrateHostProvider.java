@@ -21,17 +21,22 @@ public class MigrateHostProvider implements MigrateHostService {
 
     protected ReactiveForwarding reactiveForwarding;
 
-    // We're using a ConcurrentHashMap since it's the fastest Collection in get operations
+    // We're using ConcurrentHashMaps since it's the fastest Collection in get operations
+
+    // Keep track of all migrated hosts
     private final Map<IpAddress, IpAddress> hostMigrationMap = new ConcurrentHashMap<>();
 
+    // Keep track of all destination hosts
+    private final Map<IpAddress, IpAddress> destinationHosts = new ConcurrentHashMap<>();
+
     @Override
-    public Map<IpAddress, IpAddress> getMigrationMap() {
-        return hostMigrationMap;
+    public IpAddress hasMigrated(IpAddress ip) {
+        return hostMigrationMap.get(ip);
     }
 
     @Override
-    public IpAddress hasMigrated(IpAddress source) {
-        return hostMigrationMap.get(source);
+    public IpAddress isMigrated(IpAddress ip) {
+        return destinationHosts.get(ip);
     }
 
     @Override
@@ -42,7 +47,7 @@ public class MigrateHostProvider implements MigrateHostService {
                 (srcIP.version() != dstIP.version())) return false;
 
         hostMigrationMap.put(srcIP, dstIP);
-
+        hostMigrationMap.put(dstIP, srcIP);
 
 /*
         TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
