@@ -28,5 +28,8 @@
         <command>
             <action class="emarco.datacenter.cli.TenantsMapCommand"/>
         </command>
+        <command>
+            <action class="emarco.datacenter.cli.MigrateHostCommand"/>
+        </command>
     </command-bundle>
 </blueprint>

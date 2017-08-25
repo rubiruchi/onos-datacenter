@@ -47,6 +47,7 @@ import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.flow.criteria.Criterion;
 import org.onosproject.net.flow.criteria.EthCriterion;
+import org.onosproject.net.flow.criteria.IPCriterion;
 import org.onosproject.net.flow.instructions.Instruction;
 import org.onosproject.net.flow.instructions.Instructions;
 import org.onosproject.net.flowobjective.DefaultForwardingObjective;
@@ -263,6 +264,36 @@ public class ReactiveForwarding {
     }
 
     /**
+     * Redirects IP traffic from source Host to destination Host.
+     */
+    public void migrate(IpAddress srcIP, IpAddress dstIP) {
+
+        // Check if hosts belong to the same Tenant
+        if (!tenantsMapService.canHostsCommunicate(srcIP, dstIP)) return;
+
+        // Clean up all the Flow Rules installed by this app involving the source host as destination
+
+        for (FlowEntry r : flowRuleService.getFlowEntriesById(appId)) {
+            boolean matchesSrc = false;
+            for (Instruction i : r.treatment().allInstructions()) {
+                if (i.type() == Instruction.Type.OUTPUT) {
+                    // if the flow has matching src IPV4 or IPV6
+                    for (Criterion cr : r.selector().criteria()) {
+                        if (((cr.type() == Criterion.Type.IPV4_DST) || (cr.type() == Criterion.Type.IPV6_DST)) &&
+                            ((IPCriterion) cr).ip().equals(srcIP)) {
+
+                            log.trace("Removed flow rule from device: {}");
+                            flowRuleService.removeFlowRules((FlowRule) r);
+
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    /**
      * Request packet in via packet service.
      */
     private void requestIntercepts() {
@@ -449,7 +480,6 @@ public class ReactiveForwarding {
         flowPriority = Tools.getIntegerProperty(properties, "flowPriority", DEFAULT_PRIORITY);
         log.info("Configured. Flow Priority is configured to {}", flowPriority);
     }
-
 
     /**
      * Packet processor responsible for forwarding packets along their paths.
