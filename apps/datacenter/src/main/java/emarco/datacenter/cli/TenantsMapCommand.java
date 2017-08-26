@@ -41,7 +41,7 @@ public class TenantsMapCommand extends AbstractShellCommand {
             print("Host %s belongs to Tenant %s", ip, tenant);
         });
 
-        reactiveForwarding = AbstractShellCommand.get(ReactiveForwarding.class);
+        reactiveForwarding = get(ReactiveForwarding.class);
         print("Clearing up past flow rules.");
         reactiveForwarding.cleanAppFlowRules();
     }

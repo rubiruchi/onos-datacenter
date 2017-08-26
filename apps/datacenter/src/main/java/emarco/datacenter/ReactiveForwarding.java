@@ -536,10 +536,8 @@ public class ReactiveForwarding {
 
             // Check if hosts are allowed to communicate
 
-            boolean filter = false, redirect = false;
-            IpAddress ipSrcAddr;
-            IpAddress ipDestAddr;
-            IpAddress ipRedirAddr;
+            boolean filter = false, redirect = false, matchSrc = false, matchDst = false;
+            IpAddress ipSrcAddr, ipDestAddr, ipRedirAddr;
             TrafficTreatment.Builder trafficTreatment = DefaultTrafficTreatment.builder();
             TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
 
@@ -549,11 +547,15 @@ public class ReactiveForwarding {
                 ipSrcAddr = IpAddress.valueOf(ipv4Packet.getSourceAddress());
                 ipDestAddr = IpAddress.valueOf(ipv4Packet.getDestinationAddress());
 
-                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) filter = true;
+                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
+                    filter = true;
+                    matchSrc = matchDst = true;
+                }
                 else {
                     ipRedirAddr = migrateHostService.hasMigrated(ipDestAddr);
                     if (ipRedirAddr != null) {
                         redirect = true;
+                        matchSrc = true;
 
                         trafficTreatment.setIpDst(ipRedirAddr);
                     }
@@ -562,23 +564,30 @@ public class ReactiveForwarding {
 
                     if (ipRedirAddr != null) {
                         redirect = true;
+                        matchDst = true;
 
                         trafficTreatment.setIpSrc(ipRedirAddr);
                     }
                 }
 
                 if (filter || redirect) {
-                    Ip4Prefix matchIpv4SrcPrefix =
-                            Ip4Prefix.valueOf(ipv4Packet.getSourceAddress(),
-                                    Ip4Prefix.MAX_MASK_LENGTH);
-                    Ip4Prefix matchIpv4DstPrefix =
-                            Ip4Prefix.valueOf(ipv4Packet.getDestinationAddress(),
-                                    Ip4Prefix.MAX_MASK_LENGTH);
+                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV4);
 
-                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV4)
-                            .matchIPDst(matchIpv4DstPrefix);
+                    if (matchSrc) {
+                        IpPrefix matchIpSrcPrefix =
+                                Ip4Prefix.valueOf(ipSrcAddr,
+                                        Ip4Prefix.MAX_MASK_LENGTH);
 
-                    if (filter) selectorBuilder.matchIPSrc(matchIpv4SrcPrefix);
+                        selectorBuilder.matchIPSrc(matchIpSrcPrefix);
+                    }
+
+                    if (matchDst) {
+                        IpPrefix matchIpDstPrefix =
+                                Ip4Prefix.valueOf(ipDestAddr,
+                                        Ip4Prefix.MAX_MASK_LENGTH);
+
+                        selectorBuilder.matchIPDst(matchIpDstPrefix);
+                    }
                 }
             }
 
@@ -588,24 +597,46 @@ public class ReactiveForwarding {
                 ipSrcAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getSourceAddress());
                 ipDestAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getDestinationAddress());
 
-                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) filter = true;
-                else {
+                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
+                    filter = true;
+                    matchSrc = matchDst = true;
+                } else {
                     ipRedirAddr = migrateHostService.hasMigrated(ipDestAddr);
-                    if (ipRedirAddr != null) redirect = true;
+                    if (ipRedirAddr != null) {
+                        redirect = true;
+                        matchSrc = true;
+
+                        trafficTreatment.setIpDst(ipRedirAddr);
+                    }
+
+                    ipRedirAddr = migrateHostService.isMigrated(ipDestAddr);
+
+                    if (ipRedirAddr != null) {
+                        redirect = true;
+                        matchDst = true;
+
+                        trafficTreatment.setIpSrc(ipRedirAddr);
+                    }
                 }
 
                 if (filter || redirect) {
-                    Ip6Prefix matchIpv6SrcPrefix =
-                            Ip6Prefix.valueOf(ipv6Packet.getSourceAddress(),
-                                    Ip6Prefix.MAX_MASK_LENGTH);
-                    Ip6Prefix matchIpv6DstPrefix =
-                            Ip6Prefix.valueOf(ipv6Packet.getDestinationAddress(),
-                                    Ip6Prefix.MAX_MASK_LENGTH);
+                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV4);
 
-                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV6)
-                            .matchIPDst(matchIpv6DstPrefix);
+                    if (matchSrc) {
+                        IpPrefix matchIpSrcPrefix =
+                                Ip6Prefix.valueOf(ipSrcAddr,
+                                        Ip6Prefix.MAX_MASK_LENGTH);
 
-                    if (filter) selectorBuilder.matchIPSrc(matchIpv6SrcPrefix);
+                        selectorBuilder.matchIPSrc(matchIpSrcPrefix);
+                    }
+
+                    if (matchDst) {
+                        IpPrefix matchIpDstPrefix =
+                                Ip6Prefix.valueOf(ipDestAddr,
+                                        Ip6Prefix.MAX_MASK_LENGTH);
+
+                        selectorBuilder.matchIPDst(matchIpDstPrefix);
+                    }
                 }
             }
 
@@ -629,7 +660,7 @@ public class ReactiveForwarding {
             // else: hosts belong to the same Tenant (or IPv* filtering is disabled).
 
             if (redirect) {
-                
+
 
                 flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
                         .withSelector(selectorBuilder.build())
