@@ -265,9 +265,9 @@ public class ReactiveForwarding {
      * Handle host migration.
      */
     public boolean migrate(IpAddress srcIP, IpAddress dstIP) {
-
         // Check if Migration Service handled request correctly
         if (migrateHostService.migrate(srcIP, dstIP)) {
+            log.info("Migration possible. Cleaning up all Flow Rules related to source host.");
 
             // then clean up all rules related to the source host
             cleanAppFlowRulesByIP(srcIP, new Criterion.Type[] {

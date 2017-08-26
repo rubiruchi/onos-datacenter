@@ -28,8 +28,19 @@ public class MigrateHostCommand extends AbstractShellCommand {
         reactiveForwarding = AbstractShellCommand.get(ReactiveForwarding.class);
         tenantsMapProvider = AbstractShellCommand.get(TenantsMapProvider.class);
 
-        IpAddress srcIP = IpAddress.valueOf(sSrcIP);
-        IpAddress dstIP = IpAddress.valueOf(sDstIP);
+        IpAddress srcIP = null, dstIP = null;
+        try {
+            srcIP = IpAddress.valueOf(sSrcIP);
+        }
+        catch (Exception e) {
+            print("ERROR: An error occurred during source IP parsing: " + e);
+        }
+        try {
+            dstIP = IpAddress.valueOf(sDstIP);
+        }
+        catch (Exception e) {
+            print("ERROR: An error occurred during destination IP parsing: " + e);
+        }
 
         if (srcIP.version() != dstIP.version()) {
             print("ERROR: You cannot mix different IP versions!");
@@ -40,13 +51,9 @@ public class MigrateHostCommand extends AbstractShellCommand {
             return;
         }
 
-        reactiveForwarding.migrate(srcIP, dstIP);
-
-        /*flowRuleService.removeFlowRulesById();
-
-        tenantsMapService.getTenants().forEach((ip, tenant) -> {
-            print("Host %s belongs to Tenant %s", ip, tenant);
-        });*/
+        if (reactiveForwarding.migrate(srcIP, dstIP))
+            print("Migration ok.");
+        else print("ERROR: An error occurred. Migration failed.");
 
         //HostId.hostId()
     }

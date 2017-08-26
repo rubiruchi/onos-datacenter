@@ -54,5 +54,6 @@ public class MigrateHostProvider implements MigrateHostService {
     @Override
     public void clearMap() {
         hostMigrationMap.clear();
+        destinationHosts.clear();
     }
 }
