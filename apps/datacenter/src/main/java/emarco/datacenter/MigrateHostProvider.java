@@ -46,7 +46,7 @@ public class MigrateHostProvider implements MigrateHostService {
                 (srcIP.version() != dstIP.version())) return false;
 
         hostMigrationMap.put(srcIP, dstIP);
-        hostMigrationMap.put(dstIP, srcIP);
+        destinationHosts.put(dstIP, srcIP);
 
         return true;
     }
