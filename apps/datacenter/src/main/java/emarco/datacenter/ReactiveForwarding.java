@@ -575,22 +575,6 @@ public class ReactiveForwarding {
                         Host destinationHost;
 
                         Set<Host> hosts = hostService.getHostsByIp(ipDestAddr);
-                        /*for (Host host : hosts) {
-                            if (host.vlan().equals(context.vlan())) {
-                                dst = host;
-                                break;
-                            }
-                        }
-
-                        if (src != null && dst != null) {
-                            // We know the target host so we can respond
-                            context.reply(dst.mac());
-                            return;
-                        }
-
-                        // The request couldn't be resolved.
-                        // Flood the request on all ports except the incoming port.
-                        context.flood();*/
 
                         // The request couldn't be resolved.
                         // Flood the request on all ports except the incoming port.
@@ -632,8 +616,29 @@ public class ReactiveForwarding {
                         redirect = true;
                         matchSrc = true;
 
+                        log.warn("Changing source of Outgoing Flow from migrated host {} to old host {}", ipSrcAddr, ipRedirAddr);
+                        
+                        context.treatmentBuilder().setIpSrc(ipRedirAddr);
+                        trafficTreatment.setIpSrc(ipRedirAddr);
+
+                        Set<Host> hosts;
+
+                        Host sourceHost;
+                        hosts = hostService.getHostsByIp(ipSrcAddr);
+                        if (hosts.isEmpty()) {
+                            context.treatmentBuilder().setEthSrc(MacAddress.BROADCAST);
+                            trafficTreatment.setEthSrc(MacAddress.BROADCAST);
+                        }
+                        else {
+                            sourceHost = hostService.getHostsByIp(ipSrcAddr).iterator().next();
+                            context.treatmentBuilder().setEthSrc(sourceHost.mac());
+                            trafficTreatment.setEthSrc(sourceHost.mac());
+                        }
+
+
                         Host destinationHost;
-                        Set<Host> hosts = hostService.getHostsByIp(ipDestAddr);
+                        hosts = hostService.getHostsByIp(ipDestAddr);
+
                         // The request couldn't be resolved.
                         // Flood the request on all ports except the incoming port.
                         if (hosts.isEmpty()) {
@@ -662,23 +667,10 @@ public class ReactiveForwarding {
                                 flood(context, macMetrics);
                                 return;
                             }
+
+                            trafficTreatment.setOutput(path.src().port());
                         }
 
-                        Host sourceHost;
-                        hosts = hostService.getHostsByIp(ipSrcAddr);
-                        if (hosts.isEmpty()) {
-                            context.treatmentBuilder().setEthSrc(MacAddress.BROADCAST);
-                        }
-                        else {
-                            sourceHost = hostService.getHostsByIp(ipSrcAddr).iterator().next();
-                            context.treatmentBuilder().setEthSrc(sourceHost.mac());
-                        }
-
-                        context.treatmentBuilder().setIpSrc(ipRedirAddr);
-
-
-                        trafficTreatment.setEthSrc(sourceHost.mac()).setIpSrc(ipRedirAddr).setOutput(path.src().port());
-                        log.warn("Changing source of Outgoing Flow from migrated host {} to old host {}", ipSrcAddr, ipRedirAddr);
                     }
                 }
 
