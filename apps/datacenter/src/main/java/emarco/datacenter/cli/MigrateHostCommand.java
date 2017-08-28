@@ -55,7 +55,6 @@ public class MigrateHostCommand extends AbstractShellCommand {
             print("Migration ok.");
         else print("ERROR: An error occurred. Migration failed.");
 
-        //HostId.hostId()
     }
 
 

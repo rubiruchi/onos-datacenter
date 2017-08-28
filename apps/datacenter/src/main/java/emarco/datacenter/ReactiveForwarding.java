@@ -570,8 +570,6 @@ public class ReactiveForwarding {
 
                         log.warn("Redirecting Incoming Flow to migrated host {} to new host {}", ipDestAddr, ipRedirAddr);
 
-
-                        //context.inPacket().receivedFrom().hostId();
                         Host destinationHost;
 
                         Set<Host> hosts = hostService.getHostsByIp(ipDestAddr);
@@ -617,14 +615,12 @@ public class ReactiveForwarding {
                         matchSrc = true;
 
                         log.warn("Changing source of Outgoing Flow from migrated host {} to old host {}", ipSrcAddr, ipRedirAddr);
-                        
+
                         context.treatmentBuilder().setIpSrc(ipRedirAddr);
                         trafficTreatment.setIpSrc(ipRedirAddr);
 
-                        Set<Host> hosts;
-
                         Host sourceHost;
-                        hosts = hostService.getHostsByIp(ipSrcAddr);
+                        Set<Host> hosts = hostService.getHostsByIp(ipSrcAddr);
                         if (hosts.isEmpty()) {
                             context.treatmentBuilder().setEthSrc(MacAddress.BROADCAST);
                             trafficTreatment.setEthSrc(MacAddress.BROADCAST);
@@ -751,77 +747,44 @@ public class ReactiveForwarding {
 
             // Host are not allowed to communicate
             if (filter) {
-
                 trafficTreatment = trafficTreatment.drop();
+                handleFlow(context.inPacket().receivedFrom().deviceId(), selectorBuilder, trafficTreatment);
 
-                flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
-                        .withSelector(selectorBuilder.build())
-                        .withTreatment(trafficTreatment.build())
-                        .withPriority(flowPriority)
-                        .withFlag(ForwardingObjective.Flag.VERSATILE)
-                        .fromApp(appId)
-                        //.makeTemporary(flowTimeout)
-                        .add()
-                );
-
-
-
+                droppedPacket(macMetrics);
                 return;
             }
             // else: hosts belong to the same Tenant (or IPv* filtering is disabled).
+            // Proceed with regular packet processing
 
-
-
-            if (redirect) {
-
-
-                flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
-                        .withSelector(selectorBuilder.build())
-                        .withTreatment(trafficTreatment.build())
-                        .withPriority(flowPriority)
-                        .withFlag(ForwardingObjective.Flag.VERSATILE)
-                        .fromApp(appId)
-                        //.makeTemporary(flowTimeout)
-                        .add()
-                );
-
+            // Bail if this is deemed to be a control packet.
+            if (isControlPacket(ethPkt)) {
+                droppedPacket(macMetrics);
                 return;
             }
 
+            // Skip IPv6 multicast packet when IPv6 forward is disabled.
+            if (!ipv6Forwarding && isIpv6Multicast(ethPkt)) {
+                droppedPacket(macMetrics);
+                return;
+            }
 
-            // Proceed with regular packet processing
-            //else {
+            HostId id = HostId.hostId(ethPkt.getDestinationMAC());
 
-                // Bail if this is deemed to be a control packet.
-                if (isControlPacket(ethPkt)) {
-                    droppedPacket(macMetrics);
+            // Do not process LLDP MAC address in any way.
+            if (id.mac().isLldp()) {
+                droppedPacket(macMetrics);
+                return;
+            }
+
+            // Do not process IPv4 multicast packets, let mfwd handle them
+            if (ignoreIpv4McastPackets && ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
+                if (id.mac().isMulticast()) {
                     return;
                 }
+            }
 
-                // Skip IPv6 multicast packet when IPv6 forward is disabled.
-                if (!ipv6Forwarding && isIpv6Multicast(ethPkt)) {
-                    droppedPacket(macMetrics);
-                    return;
-                }
-
-                HostId id = HostId.hostId(ethPkt.getDestinationMAC());
-
-                // Do not process LLDP MAC address in any way.
-                if (id.mac().isLldp()) {
-                    droppedPacket(macMetrics);
-                    return;
-                }
-
-                // Do not process IPv4 multicast packets, let mfwd handle them
-                if (ignoreIpv4McastPackets && ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
-                    if (id.mac().isMulticast()) {
-                        return;
-                    }
-                }
-
-                // Do we know who this is for? If not, flood and bail.
-                Host dst = hostService.getHost(id);
-            //}
+            // Do we know who this is for? If not, flood and bail.
+            Host dst = hostService.getHost(id);
 
             if (dst == null) {
                 flood(context, macMetrics);
@@ -859,9 +822,58 @@ public class ReactiveForwarding {
                 return;
             }
 
+            if (redirect) {
+
+                handleFlow(context.inPacket().receivedFrom().deviceId(), selectorBuilder, trafficTreatment);
+
+                /*flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
+                        .withSelector(selectorBuilder.build())
+                        .withTreatment(trafficTreatment.build())
+                        .withPriority(flowPriority)
+                        .withFlag(ForwardingObjective.Flag.VERSATILE)
+                        .fromApp(appId)
+                        //.makeTemporary(flowTimeout)
+                        .add()
+                );*/
+
+                forwardPacket(macMetrics);
+
+                //
+                // If packetOutOfppTable
+                //  Send packet back to the OpenFlow pipeline to match installed flow
+                // Else
+                //  Send packet direction on the appropriate port
+                //
+                /*if (packetOutOfppTable) {
+                    packetOut(context, PortNumber.TABLE, macMetrics);
+                } else {
+                    packetOut(context, portNumber, macMetrics);
+                }*/
+
+                return;
+            }
+
             // Otherwise forward and be done with it.
             installRule(context, path.src().port(), macMetrics);
         }
+
+    }
+
+    private void handleFlow(DeviceId deviceId, TrafficSelector.Builder selectorBuilder, TrafficTreatment.Builder treatmentBuilder) {
+        handleFlow(deviceId, selectorBuilder, treatmentBuilder, false);
+    }
+
+    private void handleFlow(DeviceId deviceId, TrafficSelector.Builder selectorBuilder, TrafficTreatment.Builder treatmentBuilder, boolean makeTemporary) {
+        ForwardingObjective.Builder forwardingObjectiveBuilder = DefaultForwardingObjective.builder()
+                .withSelector(selectorBuilder.build())
+                .withTreatment(treatmentBuilder.build())
+                .withPriority(flowPriority)
+                .withFlag(ForwardingObjective.Flag.VERSATILE)
+                .fromApp(appId);
+
+        if (makeTemporary) forwardingObjectiveBuilder.makeTemporary(flowTimeout);
+
+        flowObjectiveService.forward(deviceId, forwardingObjectiveBuilder.add());
 
     }
 
@@ -1035,21 +1047,12 @@ public class ReactiveForwarding {
                 }
             }
         }
-        TrafficTreatment treatment = DefaultTrafficTreatment.builder()
-                .setOutput(portNumber)
-                .build();
 
-        ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
-                .withSelector(selectorBuilder.build())
-                .withTreatment(treatment)
-                .withPriority(flowPriority)
-                .withFlag(ForwardingObjective.Flag.VERSATILE)
-                .fromApp(appId)
-                .makeTemporary(flowTimeout)
-                .add();
+        TrafficTreatment.Builder treatmentBuilder = DefaultTrafficTreatment.builder()
+                .setOutput(portNumber);
 
-        flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(),
-                                     forwardingObjective);
+        handleFlow(context.inPacket().receivedFrom().deviceId(), selectorBuilder, treatmentBuilder, true);
+
         forwardPacket(macMetrics);
         //
         // If packetOutOfppTable
