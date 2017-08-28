@@ -570,42 +570,33 @@ public class ReactiveForwarding {
 
                         log.warn("Redirecting Incoming Flow to migrated host {} to new host {}", ipDestAddr, ipRedirAddr);
 
-                        Host destinationHost;
+                        context.treatmentBuilder().setIpDst(ipRedirAddr);
+                        trafficTreatment.setIpDst(ipRedirAddr);
 
-                        Set<Host> hosts = hostService.getHostsByIp(ipDestAddr);
+                        Host destinationHost = getHostByIp(ipDestAddr);
 
+                        if (destinationHost == null) {
+                            context.treatmentBuilder().setEthDst(MacAddress.BROADCAST);
+                            trafficTreatment.setEthDst(MacAddress.BROADCAST);
+                        }
+                        else {
+                            trafficTreatment.setEthDst(destinationHost.mac());
+                            context.treatmentBuilder().setEthDst(destinationHost.mac());
+                        }
+
+                        Path path = getPathToHost(destinationHost, pkt.receivedFrom().deviceId(), pkt.receivedFrom().port());
                         // The request couldn't be resolved.
                         // Flood the request on all ports except the incoming port.
-                        if (hosts.isEmpty()) {
+                        if (path == null) {
+                            log.warn("Don't know where to go from here {} for {} -> {}",
+                                    pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
+
                             flood(context, macMetrics);
                             return;
                         }
-                        else {
-                            destinationHost = hosts.iterator().next();
 
-                            Set<Path> paths =
-                                    topologyService.getPaths(topologyService.currentTopology(),
-                                            pkt.receivedFrom().deviceId(),
-                                            destinationHost.location().deviceId());
-                            if (paths.isEmpty()) {
-                                // If there are no paths, flood and bail.
-                                flood(context, macMetrics);
-                                return;
-                            }
-
-                            // Otherwise, pick a path that does not lead back to where we
-                            // came from; if no such path, flood and bail.
-                            Path path = pickForwardPathIfPossible(paths, pkt.receivedFrom().port());
-                            if (path == null) {
-                                log.warn("Don't know where to go from here {} for {} -> {}",
-                                        pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
-                                flood(context, macMetrics);
-                                return;
-                            }
-
-                            trafficTreatment.setEthDst(destinationHost.mac()).setIpDst(ipRedirAddr).setOutput(path.src().port());
-                        }
-
+                        context.treatmentBuilder().setOutput(path.src().port());
+                        trafficTreatment.setOutput(path.src().port());
                     }
 
                     ipRedirAddr = migrateHostService.isMigrated(ipSrcAddr);
@@ -619,9 +610,8 @@ public class ReactiveForwarding {
                         context.treatmentBuilder().setIpSrc(ipRedirAddr);
                         trafficTreatment.setIpSrc(ipRedirAddr);
 
-                        Host sourceHost;
-                        Set<Host> hosts = hostService.getHostsByIp(ipSrcAddr);
-                        if (hosts.isEmpty()) {
+                        Host sourceHost = getHostByIp(ipSrcAddr);
+                        if (sourceHost == null) {
                             context.treatmentBuilder().setEthSrc(MacAddress.BROADCAST);
                             trafficTreatment.setEthSrc(MacAddress.BROADCAST);
                         }
@@ -631,41 +621,19 @@ public class ReactiveForwarding {
                             trafficTreatment.setEthSrc(sourceHost.mac());
                         }
 
-
-                        Host destinationHost;
-                        hosts = hostService.getHostsByIp(ipDestAddr);
+                        Path path = getPathToHostByIp(ipDestAddr, pkt.receivedFrom().deviceId(), pkt.receivedFrom().port());
 
                         // The request couldn't be resolved.
                         // Flood the request on all ports except the incoming port.
-                        if (hosts.isEmpty()) {
+                        if (path == null) {
+                            log.warn("Don't know where to go from here {} for {} -> {}",
+                                    pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
+
                             flood(context, macMetrics);
                             return;
                         }
-                        else {
-                            destinationHost = hosts.iterator().next();
 
-                            Set<Path> paths =
-                                    topologyService.getPaths(topologyService.currentTopology(),
-                                            pkt.receivedFrom().deviceId(),
-                                            destinationHost.location().deviceId());
-                            if (paths.isEmpty()) {
-                                // If there are no paths, flood and bail.
-                                flood(context, macMetrics);
-                                return;
-                            }
-
-                            // Otherwise, pick a path that does not lead back to where we
-                            // came from; if no such path, flood and bail.
-                            Path path = pickForwardPathIfPossible(paths, pkt.receivedFrom().port());
-                            if (path == null) {
-                                log.warn("Don't know where to go from here {} for {} -> {}",
-                                        pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
-                                flood(context, macMetrics);
-                                return;
-                            }
-
-                            trafficTreatment.setOutput(path.src().port());
-                        }
+                        trafficTreatment.setOutput(path.src().port());
 
                     }
                 }
@@ -791,6 +759,8 @@ public class ReactiveForwarding {
                 return;
             }
 
+            // TODO Redirect!
+
             // Are we on an edge switch that our destination is on? If so,
             // simply forward out to the destination and bail.
             if (pkt.receivedFrom().deviceId().equals(dst.location().deviceId())) {
@@ -800,42 +770,22 @@ public class ReactiveForwarding {
                 return;
             }
 
-            // Otherwise, get a set of paths that lead from here to the
-            // destination edge switch.
-            Set<Path> paths =
-                    topologyService.getPaths(topologyService.currentTopology(),
-                                             pkt.receivedFrom().deviceId(),
-                                             dst.location().deviceId());
-            if (paths.isEmpty()) {
-                // If there are no paths, flood and bail.
+            Path path = getPathToHost(dst, pkt.receivedFrom().deviceId(), pkt.receivedFrom().port());
+
+            // The request couldn't be resolved.
+            // Flood the request on all ports except the incoming port.
+            if (path == null) {
+                log.warn("Don't know where to go from here {} for {} -> {}",
+                        pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
+
                 flood(context, macMetrics);
                 return;
             }
 
-            // Otherwise, pick a path that does not lead back to where we
-            // came from; if no such path, flood and bail.
-            Path path = pickForwardPathIfPossible(paths, pkt.receivedFrom().port());
-            if (path == null) {
-                log.warn("Don't know where to go from here {} for {} -> {}",
-                         pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
-                flood(context, macMetrics);
-                return;
-            }
 
             if (redirect) {
 
                 handleFlow(context.inPacket().receivedFrom().deviceId(), selectorBuilder, trafficTreatment);
-
-                /*flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
-                        .withSelector(selectorBuilder.build())
-                        .withTreatment(trafficTreatment.build())
-                        .withPriority(flowPriority)
-                        .withFlag(ForwardingObjective.Flag.VERSATILE)
-                        .fromApp(appId)
-                        //.makeTemporary(flowTimeout)
-                        .add()
-                );*/
-
                 forwardPacket(macMetrics);
 
                 //
@@ -857,6 +807,38 @@ public class ReactiveForwarding {
             installRule(context, path.src().port(), macMetrics);
         }
 
+    }
+
+    private Path getPathToHostByIp(IpAddress ipAddress, DeviceId deviceId, PortNumber inPort) {
+        Host host = getHostByIp(ipAddress);
+
+        return getPathToHost(host, deviceId, inPort);
+    }
+
+    private Path getPathToHost(Host host, DeviceId deviceId, PortNumber inPort) {
+        if (host == null) return null;
+
+        Set<Path> paths =
+                topologyService.getPaths(topologyService.currentTopology(),
+                        deviceId,
+                        host.location().deviceId());
+
+        if (paths.isEmpty()) return null;
+
+        return pickForwardPathIfPossible(paths, inPort);
+    }
+
+    private Host getHostByIp(IpAddress ipAddress) {
+        Set<Host> hosts = hostService.getHostsByIp(ipAddress);
+
+        switch (hosts.size()){
+            case 0:
+                return null;
+            case 1:
+                return hosts.iterator().next();
+            default: // TODO foreach and match for vlan id?
+                return hosts.iterator().next();
+        }
     }
 
     private void handleFlow(DeviceId deviceId, TrafficSelector.Builder selectorBuilder, TrafficTreatment.Builder treatmentBuilder) {
