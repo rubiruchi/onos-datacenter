@@ -724,11 +724,11 @@ public class ReactiveForwarding {
             }
 
             // Do not process IPv4 multicast packets, let mfwd handle them
-            /*if (ignoreIpv4McastPackets && ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
+            if (ignoreIpv4McastPackets && ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
                 if (id.mac().isMulticast()) {
                     return;
                 }
-            }*/
+            }
 
             // Do we know who this is for? If not, flood and bail.
             if (destinationHost == null) {
@@ -736,29 +736,31 @@ public class ReactiveForwarding {
                 return;
             }
 
-
-            /*if (pkt.receivedFrom().deviceId().equals(destinationHost.location().deviceId())) {
+            PortNumber portNumber = null;
+            if (pkt.receivedFrom().deviceId().equals(destinationHost.location().deviceId())) {
                 if (!context.inPacket().receivedFrom().port().equals(destinationHost.location().port())) {
-                    //installRule(context, destinationHost.location().port(), macMetrics);
-
-                    // Set destination port to destinationHost.location().port()
+                    portNumber = destinationHost.location().port();
                 }
-                return;
-            }*/
-
-            Path path = getPathToHost(destinationHost, pkt.receivedFrom().deviceId(), pkt.receivedFrom().port());
-
-            // The request couldn't be resolved.
-            // Flood the request on all ports except the incoming port.
-            if (path == null) {
-                log.warn("Don't know where to go from here {} for {} -> {}",
-                        pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
-
-                flood(context, macMetrics);
-                return;
+                //return;
             }
 
-            PortNumber portNumber = path.src().port();
+            log.warn("Destination Host Id " + id + " host " + destinationHost.ipAddresses());
+
+            if (portNumber == null) {
+                Path path = getPathToHost(destinationHost, pkt.receivedFrom().deviceId(), pkt.receivedFrom().port());
+
+                // The request couldn't be resolved.
+                // Flood the request on all ports except the incoming port.
+                if (path == null) {
+                    log.warn("Don't know where to go from here {} for {} -> {}",
+                            pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
+
+                    flood(context, macMetrics);
+                    return;
+                }
+
+                portNumber = path.src().port();
+            }
             //trafficTreatment.setOutput();
             // TODO Redirect!
 
@@ -786,14 +788,14 @@ public class ReactiveForwarding {
             }
 
 
-            // Are we on an edge switch that our destination is on? If so,
+            /*// Are we on an edge switch that our destination is on? If so,
             // simply forward out to the destination and bail.
             if (pkt.receivedFrom().deviceId().equals(destinationHost.location().deviceId())) {
                 if (!context.inPacket().receivedFrom().port().equals(destinationHost.location().port())) {
                     installRule(context, destinationHost.location().port(), macMetrics);
                 }
                 return;
-            }
+            }*/
 
             /*Path path = getPathToHost(destinationHost, pkt.receivedFrom().deviceId(), pkt.receivedFrom().port());
 
