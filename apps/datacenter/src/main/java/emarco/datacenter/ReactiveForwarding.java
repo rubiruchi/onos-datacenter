@@ -572,13 +572,18 @@ public class ReactiveForwarding {
                         destinationHost = getHostByIp(ipDestAddr);
 
                         // TODO ethPkt.getDestinationMAC() to fix output log
+
                         if (destinationHost == null) {
+                            // DestinationHost is not known to the HostService, yet.
+                            // Propagate the message and wait for it to respond to get its MAC.
                             trafficTreatment.setEthDst(MacAddress.BROADCAST);
+                            log.warn("DestinationHost still null");
+                            flood(context, macMetrics);
+                            return;
                         }
                         else {
                             trafficTreatment.setEthDst(destinationHost.mac());
                         }
-
                     }
 
                     ipRedirAddr = migrateHostService.isMigrated(ipSrcAddr);
@@ -597,7 +602,7 @@ public class ReactiveForwarding {
                             trafficTreatment.setEthSrc(MacAddress.BROADCAST);
                         }
                         else {
-                            sourceHost = hostService.getHostsByIp(ipSrcAddr).iterator().next();
+                            // Actually, this should never happen...
                             trafficTreatment.setEthSrc(sourceHost.mac());
                         }
 
@@ -711,7 +716,6 @@ public class ReactiveForwarding {
                 destinationHost = hostService.getHost(id);
             }
 
-
             // Do not process LLDP MAC address in any way.
             if (id.mac().isLldp()) {
                 droppedPacket(macMetrics);
@@ -732,9 +736,10 @@ public class ReactiveForwarding {
             }
 
             PortNumber portNumber = null;
+
             // Are we on an edge switch that our destination is on? If so,
             // simply forward out to the destination and bail.
-            if (!redirect && pkt.receivedFrom().deviceId().equals(destinationHost.location().deviceId())) {
+            if (pkt.receivedFrom().deviceId().equals(destinationHost.location().deviceId())) {
                 if (!context.inPacket().receivedFrom().port().equals(destinationHost.location().port())) {
                     portNumber = destinationHost.location().port();
                 }
