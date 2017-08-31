@@ -1,0 +1,14 @@
+ln -s '/media/sf_Progetto_ONOS/tenants1.csv' '/tmp/onos-1.10.0/apache-karaf-3.0.8'
+ln -s '/media/sf_Progetto_ONOS/tenants2.csv' '/tmp/onos-1.10.0/apache-karaf-3.0.8'
+
+sh ./onos_localhost.sh
+
+onos:app deactivate org.onosproject.fwd
+onos:app activate org.onosproject.datacenter
+tenantsmap tenants2.csv
+migratehost 10.0.0.4 10.0.0.5
+
+
+
+#h4 echo 0 > /proc/sys/net/ipv4/icmp_echo_ignore_all
+
