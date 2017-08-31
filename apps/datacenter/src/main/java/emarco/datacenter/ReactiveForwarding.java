@@ -85,6 +85,7 @@ import java.nio.file.Files;
 //import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -269,13 +270,7 @@ public class ReactiveForwarding {
         if (migrateHostService.migrate(srcIP, dstIP)) {
             log.info("Migration possible. Cleaning up all Flow Rules related to source host.");
 
-            // then clean up all rules related to the source host
-            cleanAppFlowRulesByIP(srcIP, new Criterion.Type[] {
-                    Criterion.Type.IPV4_DST,
-                    Criterion.Type.IPV6_DST
-            });
-
-            cleanAppFlowRules();
+            cleanAppFlowRulesByIP(srcIP, true, true);
 
             return true;
         }
@@ -289,29 +284,49 @@ public class ReactiveForwarding {
         flowRuleService.removeFlowRulesById(appId);
     }
 
-    /**
-     * Redirects IP traffic from source Host to destination Host.
-     */
-    public void cleanAppFlowRulesByIP(IpAddress targetIP, Criterion.Type[] criteria) {
+    public void cleanAppFlowRulesByIP(IpAddress targetIP, boolean asSource, boolean asDestination) {
 
-        // Convert slow-access array to faster collection
-        Map<Criterion.Type, Boolean> criteriaMap = new ConcurrentHashMap<>();
-        for (Criterion.Type c : criteria) {
-            criteriaMap.put(c, true);
+        Host targetHost = getHostByIp(targetIP);
+        MacAddress targetMAC = targetHost.mac();
+
+        Map<Criterion.Type, Predicate> criteriaMap = new ConcurrentHashMap<>();
+
+        Predicate<IPCriterion> ipComparator = (IPCriterion cr) -> cr.ip().equals(targetIP);
+        Predicate<EthCriterion> macComparator = (EthCriterion cr) -> cr.mac().equals(targetMAC);
+
+        if (asSource) {
+            criteriaMap.put(
+                    ((targetIP.version() == IpAddress.Version.INET) ? Criterion.Type.IPV4_SRC : Criterion.Type.IPV6_SRC),
+                    ipComparator
+                    );
+
+            criteriaMap.put(
+                    Criterion.Type.ETH_SRC,
+                    macComparator
+            );
+        }
+        if (asDestination) {
+            criteriaMap.put(
+                    ((targetIP.version() == IpAddress.Version.INET) ? Criterion.Type.IPV4_DST : Criterion.Type.IPV6_DST),
+                    ipComparator
+            );
+
+            criteriaMap.put(
+                    Criterion.Type.ETH_DST,
+                    macComparator
+            );
         }
 
-        log.info("Criteria Map: " + criteriaMap);
-
-        // Clean up all the Flow Rules installed by this app involving the source host as destination
         for (FlowEntry r : flowRuleService.getFlowEntriesById(appId)) {
 
             for (Instruction i : r.treatment().allInstructions()) {
                 if (i.type() == Instruction.Type.OUTPUT) {
                     // check if the flow has matching criterion
                     for (Criterion cr : r.selector().criteria()) {
+
                         log.info("Criterion: " + cr);
-                        if ((criteriaMap.containsKey(cr.type())) &&
-                            ((IPCriterion) cr).ip().equals(targetIP)) {
+                        Predicate action = criteriaMap.get(cr.type());
+                        if (action != null && action.test(cr)) {
 
                             flowRuleService.removeFlowRules((FlowRule) r);
                             log.info("Removed flow rule " + r);
@@ -322,9 +337,7 @@ public class ReactiveForwarding {
                 }
             }
         }
-
     }
-
 
     /**
      * Request packet in via packet service.
