@@ -16,14 +16,7 @@
 package emarco.datacenter;
 
 import com.google.common.collect.ImmutableSet;
-import org.apache.felix.scr.annotations.Activate;
-import org.apache.felix.scr.annotations.Component;
-import org.apache.felix.scr.annotations.Deactivate;
-import org.apache.felix.scr.annotations.Modified;
-import org.apache.felix.scr.annotations.Property;
-import org.apache.felix.scr.annotations.Reference;
-import org.apache.felix.scr.annotations.Service;
-import org.apache.felix.scr.annotations.ReferenceCardinality;
+import org.apache.felix.scr.annotations.*;
 import org.onlab.packet.*;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Tools;
@@ -31,20 +24,8 @@ import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.event.Event;
-import org.onosproject.net.ConnectPoint;
-import org.onosproject.net.DeviceId;
-import org.onosproject.net.Host;
-import org.onosproject.net.HostId;
-import org.onosproject.net.Link;
-import org.onosproject.net.Path;
-import org.onosproject.net.PortNumber;
-import org.onosproject.net.flow.DefaultTrafficSelector;
-import org.onosproject.net.flow.DefaultTrafficTreatment;
-import org.onosproject.net.flow.FlowEntry;
-import org.onosproject.net.flow.FlowRule;
-import org.onosproject.net.flow.FlowRuleService;
-import org.onosproject.net.flow.TrafficSelector;
-import org.onosproject.net.flow.TrafficTreatment;
+import org.onosproject.net.*;
+import org.onosproject.net.flow.*;
 import org.onosproject.net.flow.criteria.Criterion;
 import org.onosproject.net.flow.criteria.EthCriterion;
 import org.onosproject.net.flow.criteria.IPCriterion;
@@ -55,38 +36,24 @@ import org.onosproject.net.flowobjective.FlowObjectiveService;
 import org.onosproject.net.flowobjective.ForwardingObjective;
 import org.onosproject.net.host.HostService;
 import org.onosproject.net.link.LinkEvent;
-import org.onosproject.net.packet.InboundPacket;
-import org.onosproject.net.packet.PacketContext;
-import org.onosproject.net.packet.PacketPriority;
-import org.onosproject.net.packet.PacketProcessor;
-import org.onosproject.net.packet.PacketService;
+import org.onosproject.net.packet.*;
 import org.onosproject.net.topology.TopologyEvent;
 import org.onosproject.net.topology.TopologyListener;
 import org.onosproject.net.topology.TopologyService;
-import org.onosproject.store.service.StorageService;
-import org.osgi.service.component.ComponentContext;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.EventuallyConsistentMap;
-import org.onosproject.store.service.WallClockTimestamp;
 import org.onosproject.store.service.MultiValuedTimestamp;
+import org.onosproject.store.service.StorageService;
+import org.onosproject.store.service.WallClockTimestamp;
+import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-
-import static org.slf4j.LoggerFactory.getLogger;
-
-
-import org.onlab.packet.IpAddress;
-import org.onosproject.incubator.net.virtual.TenantId;
-import java.io.IOException;
-import java.nio.file.Files;
-// Avoid ambiguous reference
-//import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
-import java.util.stream.Stream;
+
+import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * Sample reactive forwarding application.
@@ -287,6 +254,8 @@ public class ReactiveForwarding {
     public void cleanAppFlowRulesByIP(IpAddress targetIP, boolean asSource, boolean asDestination) {
 
         Host targetHost = getHostByIp(targetIP);
+        if (targetHost == null) return;
+
         MacAddress targetMAC = targetHost.mac();
 
         Map<Criterion.Type, Predicate> criteriaMap = new ConcurrentHashMap<>();
@@ -324,15 +293,15 @@ public class ReactiveForwarding {
                     // check if the flow has matching criterion
                     for (Criterion cr : r.selector().criteria()) {
 
-                        log.info("Criterion: " + cr);
+                        log.debug("Criterion: " + cr);
                         Predicate action = criteriaMap.get(cr.type());
                         if (action != null && action.test(cr)) {
 
                             flowRuleService.removeFlowRules((FlowRule) r);
-                            log.info("Removed flow rule " + r);
+                            log.debug("Removed flow rule " + r);
 
                         }
-                        else log.info("Criterion: not matching");
+                        else log.debug("Criterion: not matching");
                     }
                 }
             }
@@ -594,7 +563,7 @@ public class ReactiveForwarding {
                     if (ipRedirAddr != null) {
                         matchDst = redirect = true;
 
-                        log.warn("Redirecting Incoming Flow to migrated host {} to new host {}", ipDestAddr, ipRedirAddr);
+                        log.info("Redirecting Incoming Flow to migrated host {} to new host {}", ipDestAddr, ipRedirAddr);
 
                         trafficTreatment.setIpDst(ipRedirAddr);
                         destinationHost = getHostByIp(ipDestAddr);
@@ -605,7 +574,7 @@ public class ReactiveForwarding {
                             // DestinationHost is not known to the HostService, yet.
                             // Propagate the message and wait for it to respond to get its MAC.
                             trafficTreatment.setEthDst(MacAddress.BROADCAST);
-                            log.warn("DestinationHost still null");
+                            log.debug("DestinationHost still null");
                             flood(context, macMetrics);
                             return;
                         }
@@ -619,17 +588,17 @@ public class ReactiveForwarding {
                     if (ipRedirAddr != null) {
                         matchSrc = redirect = true;
 
-                        log.warn("Changing source of Outgoing Flow from migrated host {} to old host {}", ipSrcAddr, ipRedirAddr);
+                        log.info("Changing source of Outgoing Flow from migrated host {} to old host {}", ipSrcAddr, ipRedirAddr);
 
                         trafficTreatment.setIpSrc(ipRedirAddr);
 
                         Host sourceHost = getHostByIp(ipSrcAddr);
                         // TODO ethPkt.getSourceMAC() to fix output log
                         if (sourceHost == null) {
+                            // Actually, this should never happen...
                             trafficTreatment.setEthSrc(MacAddress.BROADCAST);
                         }
                         else {
-                            // Actually, this should never happen...
                             trafficTreatment.setEthSrc(sourceHost.mac());
                         }
 
@@ -706,8 +675,10 @@ public class ReactiveForwarding {
                 }
             }
 
+
             // Do we know who this is for? If not, flood and bail.
             if (destinationHost == null) {
+                log.debug("DestinationHost still null");
                 flood(context, macMetrics);
                 return;
             }
@@ -728,7 +699,7 @@ public class ReactiveForwarding {
                 // The request couldn't be resolved.
                 // Flood the request on all ports except the incoming port.
                 if (path == null) {
-                    log.warn("Don't know where to go from here {} for {} -> {}",
+                    log.debug("Don't know where to go from here {} for {} -> {}",
                             pkt.receivedFrom(), ethPkt.getSourceMAC(), destinationHost.mac());
 
                     flood(context, macMetrics);
@@ -776,6 +747,7 @@ public class ReactiveForwarding {
                 topologyService.getPaths(topologyService.currentTopology(),
                         deviceId,
                         host.location().deviceId());
+        log.debug("Available paths: " + paths);
 
         if (paths.isEmpty()) return null;
 
@@ -800,8 +772,8 @@ public class ReactiveForwarding {
     }
 
     private void handleFlow(DeviceId deviceId, TrafficSelector.Builder selectorBuilder, TrafficTreatment.Builder treatmentBuilder, boolean makeTemporary) {
-        log.info("Rule installed with treatment: " + treatmentBuilder.build().allInstructions());
-        log.info("Rule traffic selector: " + selectorBuilder.build().criteria().toString());
+        log.debug("Rule installed with treatment: " + treatmentBuilder.build().allInstructions());
+        log.debug("Rule traffic selector: " + selectorBuilder.build().criteria().toString());
 
         ForwardingObjective.Builder forwardingObjectiveBuilder = DefaultForwardingObjective.builder()
                 .withSelector(selectorBuilder.build())
@@ -850,7 +822,7 @@ public class ReactiveForwarding {
                                              context.inPacket().receivedFrom())) {
             packetOut(context, PortNumber.FLOOD, macMetrics);
         } else {
-            log.info("Not a broadcast point. Blocking packet");
+            log.debug("Not a broadcast point. Blocking packet");
             context.block();
         }
     }
@@ -862,7 +834,7 @@ public class ReactiveForwarding {
     }
     private void packetOut(PacketContext context, ReactiveForwardMetrics macMetrics) {
         replyPacket(macMetrics);
-        log.info("Treatment applied: " + context.treatmentBuilder().build().allInstructions());
+        log.debug("Treatment applied: " + context.treatmentBuilder().build().allInstructions());
         context.send();
     }
 
