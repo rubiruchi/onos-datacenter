@@ -16,7 +16,6 @@
 package emarco.datacenter;
 
 import com.google.common.collect.ImmutableSet;
-import org.apache.felix.scr.annotations.*;
 import org.onlab.packet.*;
 import org.onlab.util.KryoNamespace;
 import org.onlab.util.Tools;
@@ -47,6 +46,15 @@ import org.onosproject.store.service.StorageService;
 import org.onosproject.store.service.WallClockTimestamp;
 import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
+// https://jira.onosproject.org/browse/ONOS-5581
+import org.apache.felix.scr.annotations.Property;
+import org.apache.felix.scr.annotations.Reference;
+import org.apache.felix.scr.annotations.ReferenceCardinality;
+import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Service;
+import org.apache.felix.scr.annotations.Activate;
+import org.apache.felix.scr.annotations.Deactivate;
+import org.apache.felix.scr.annotations.Modified;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;

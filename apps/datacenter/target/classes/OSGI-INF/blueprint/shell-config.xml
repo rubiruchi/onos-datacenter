@@ -16,13 +16,14 @@
 <blueprint xmlns="http://www.osgi.org/xmlns/blueprint/v1.0.0">
     <!--<command-bundle xmlns="http://karaf.apache.org/xmlns/shell/v1.1.0">
         <command>
-            <action class="emarco.datacenter.cli.TenantsMapCommand"/>
+            <action class="emarco.datacenter.ReactiveForwardingCommand"/>
             <completers>
             <ref component-id="MacAddressCompleter"/>
             </completers>
         </command>
     </command-bundle>
     <bean id="MacAddressCompleter" class="emarco.datacenter.MacAddressCompleter"/>-->
+    <!--Tenants command-->
     <command-bundle xmlns="http://karaf.apache.org/xmlns/shell/v1.1.0">
         <command>
             <action class="emarco.datacenter.cli.TenantsMapCommand"/>
@@ -32,4 +33,3 @@
         </command>
     </command-bundle>
 </blueprint>
-
