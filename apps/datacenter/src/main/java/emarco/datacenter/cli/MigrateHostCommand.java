@@ -51,6 +51,11 @@ public class MigrateHostCommand extends AbstractShellCommand {
             return;
         }
 
+        if (reactiveForwarding.getHostByIp(dstIP) == null) {
+            print("ERROR: The Host is not known to the Host Service, yet. Migration failed.");
+            return;
+        }
+
         if (reactiveForwarding.migrate(srcIP, dstIP))
             print("Migration ok.");
         else print("ERROR: An error occurred. Migration failed.");

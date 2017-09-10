@@ -566,7 +566,7 @@ public class ReactiveForwarding {
                         log.info("Redirecting Incoming Flow to migrated host {} to new host {}", ipDestAddr, ipRedirAddr);
 
                         trafficTreatment.setIpDst(ipRedirAddr);
-                        destinationHost = getHostByIp(ipDestAddr);
+                        destinationHost = getHostByIp(ipRedirAddr);
 
                         // TODO ethPkt.getDestinationMAC() to fix output log
 
@@ -578,30 +578,31 @@ public class ReactiveForwarding {
                             flood(context, macMetrics);
                             return;
                         }
-                        else {
-                            trafficTreatment.setEthDst(destinationHost.mac());
-                        }
+
+                        trafficTreatment.setEthDst(destinationHost.mac());
+
                     }
+                    else {
+                        ipRedirAddr = migrateHostService.isMigrated(ipSrcAddr);
 
-                    ipRedirAddr = migrateHostService.isMigrated(ipSrcAddr);
+                        if (ipRedirAddr != null) {
+                            matchSrc = redirect = true;
 
-                    if (ipRedirAddr != null) {
-                        matchSrc = redirect = true;
+                            log.info("Changing source of Outgoing Flow from migrated host {} to old host {}", ipSrcAddr, ipRedirAddr);
 
-                        log.info("Changing source of Outgoing Flow from migrated host {} to old host {}", ipSrcAddr, ipRedirAddr);
+                            trafficTreatment.setIpSrc(ipRedirAddr);
 
-                        trafficTreatment.setIpSrc(ipRedirAddr);
+                            Host sourceHost = getHostByIp(ipSrcAddr);
+                            // TODO ethPkt.getSourceMAC() to fix output log
+                            if (sourceHost == null) {
+                                // Actually, this should never happen...
+                                trafficTreatment.setEthSrc(MacAddress.BROADCAST);
+                            }
+                            else {
+                                trafficTreatment.setEthSrc(sourceHost.mac());
+                            }
 
-                        Host sourceHost = getHostByIp(ipSrcAddr);
-                        // TODO ethPkt.getSourceMAC() to fix output log
-                        if (sourceHost == null) {
-                            // Actually, this should never happen...
-                            trafficTreatment.setEthSrc(MacAddress.BROADCAST);
                         }
-                        else {
-                            trafficTreatment.setEthSrc(sourceHost.mac());
-                        }
-
                     }
                 }
 
@@ -754,7 +755,7 @@ public class ReactiveForwarding {
         return pickForwardPathIfPossible(paths, inPort);
     }
 
-    private Host getHostByIp(IpAddress ipAddress) {
+    public Host getHostByIp(IpAddress ipAddress) {
         Set<Host> hosts = hostService.getHostsByIp(ipAddress);
 
         switch (hosts.size()){
