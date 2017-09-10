@@ -540,8 +540,8 @@ public class ReactiveForwarding {
             inPacket(macMetrics);
 
 
-            boolean filter = false, redirect = false, matchSrc = false, matchDst = false;
-            IpAddress ipSrcAddr, ipDestAddr, ipRedirAddr;
+            boolean handleIp = false, filter = false, redirect = false;
+            IpAddress ipSrcAddr = null, ipDestAddr = null;
             TrafficTreatment.Builder trafficTreatment = context.treatmentBuilder();
             TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
             Host destinationHost = null;
@@ -551,6 +551,23 @@ public class ReactiveForwarding {
                 IPv4 ipv4Packet = (IPv4) ethPkt.getPayload();
                 ipSrcAddr = IpAddress.valueOf(ipv4Packet.getSourceAddress());
                 ipDestAddr = IpAddress.valueOf(ipv4Packet.getDestinationAddress());
+
+                handleIp = true;
+            }
+
+            // Should we filter IPv6 traffic?
+            else if (filterIpv6 && ethPkt.getEtherType() == Ethernet.TYPE_IPV6) {
+                IPv6 ipv6Packet = (IPv6) ethPkt.getPayload();
+                ipSrcAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getSourceAddress());
+                ipDestAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getDestinationAddress());
+
+                handleIp = true;
+            }
+
+            if (handleIp) {
+                IpAddress ipRedirAddr;
+                boolean matchSrc = false, matchDst = false;
+
 
                 // Check if hosts are allowed to communicate
                 if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
@@ -562,13 +579,11 @@ public class ReactiveForwarding {
                 else {
                     ipRedirAddr = migrateHostService.hasMigrated(ipDestAddr);
                     if (ipRedirAddr != null) {
-                        redirect = true;
-                        matchDst = true;
+                        matchDst = redirect = true;
 
                         log.warn("Redirecting Incoming Flow to migrated host {} to new host {}", ipDestAddr, ipRedirAddr);
 
                         trafficTreatment.setIpDst(ipRedirAddr);
-
                         destinationHost = getHostByIp(ipDestAddr);
 
                         // TODO ethPkt.getDestinationMAC() to fix output log
@@ -589,8 +604,7 @@ public class ReactiveForwarding {
                     ipRedirAddr = migrateHostService.isMigrated(ipSrcAddr);
 
                     if (ipRedirAddr != null) {
-                        redirect = true;
-                        matchSrc = true;
+                        matchSrc = redirect = true;
 
                         log.warn("Changing source of Outgoing Flow from migrated host {} to old host {}", ipSrcAddr, ipRedirAddr);
 
@@ -610,79 +624,29 @@ public class ReactiveForwarding {
                 }
 
                 if (filter || redirect) {
-                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV4);
+                    selectorBuilder.matchEthType(ethPkt.getEtherType());
 
                     if (matchSrc) {
                         IpPrefix matchIpSrcPrefix =
-                                Ip4Prefix.valueOf(ipSrcAddr,
-                                        Ip4Prefix.MAX_MASK_LENGTH);
+                                IpPrefix.valueOf(ipSrcAddr,
+                                        (ipSrcAddr.version() == IpAddress.Version.INET) ?
+                                                IpPrefix.MAX_INET_MASK_LENGTH : IpPrefix.MAX_INET6_MASK_LENGTH);
 
                         selectorBuilder.matchIPSrc(matchIpSrcPrefix);
                     }
 
                     if (matchDst) {
                         IpPrefix matchIpDstPrefix =
-                                Ip4Prefix.valueOf(ipDestAddr,
-                                        Ip4Prefix.MAX_MASK_LENGTH);
+                                IpPrefix.valueOf(ipDestAddr,
+                                        (ipDestAddr.version() == IpAddress.Version.INET) ?
+                                                IpPrefix.MAX_INET_MASK_LENGTH : IpPrefix.MAX_INET6_MASK_LENGTH);
 
                         selectorBuilder.matchIPDst(matchIpDstPrefix);
                     }
                 }
-            }
 
-            // Should we filter IPv6 traffic?
-//            if (filterIpv6 && ethPkt.getEtherType() == Ethernet.TYPE_IPV6) {
-//                IPv6 ipv6Packet = (IPv6) ethPkt.getPayload();
-//                ipSrcAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getSourceAddress());
-//                ipDestAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getDestinationAddress());
-//
-//                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
-//                    filter = true;
-//                    matchSrc = matchDst = true;
-//
-//                    log.info("Dropping Flow from host {} to host {} as they belong to different tenants.", ipSrcAddr, ipDestAddr);
-//                }
-//                else {
-//                    ipRedirAddr = migrateHostService.hasMigrated(ipDestAddr);
-//                    if (ipRedirAddr != null) {
-//                        redirect = true;
-//                        matchSrc = true;
-//
-//                        trafficTreatment.setIpDst(ipRedirAddr);
-//                        log.warn("Redirecting Incoming Flow to migrated host {} to new host {}", ipDestAddr, ipRedirAddr);
-//                    }
-//
-//                    ipRedirAddr = migrateHostService.isMigrated(ipSrcAddr);
-//
-//                    if (ipRedirAddr != null) {
-//                        redirect = true;
-//                        matchDst = true;
-//
-//                        trafficTreatment.setIpSrc(ipRedirAddr);
-//                        log.warn("Redirecting Outgoing Flow from migrated host {} to new host {}", ipSrcAddr, ipRedirAddr);
-//                    }
-//                }
-//
-//                if (filter || redirect) {
-//                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV4);
-//
-//                    if (matchSrc) {
-//                        IpPrefix matchIpSrcPrefix =
-//                                Ip6Prefix.valueOf(ipSrcAddr,
-//                                        Ip6Prefix.MAX_MASK_LENGTH);
-//
-//                        selectorBuilder.matchIPSrc(matchIpSrcPrefix);
-//                    }
-//
-//                    if (matchDst) {
-//                        IpPrefix matchIpDstPrefix =
-//                                Ip6Prefix.valueOf(ipDestAddr,
-//                                        Ip6Prefix.MAX_MASK_LENGTH);
-//
-//                        selectorBuilder.matchIPDst(matchIpDstPrefix);
-//                    }
-//                }
-//            }
+
+            }
 
             // Host are not allowed to communicate
             if (filter) {
@@ -752,7 +716,7 @@ public class ReactiveForwarding {
                 // Flood the request on all ports except the incoming port.
                 if (path == null) {
                     log.warn("Don't know where to go from here {} for {} -> {}",
-                            pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
+                            pkt.receivedFrom(), ethPkt.getSourceMAC(), destinationHost.mac());
 
                     flood(context, macMetrics);
                     return;
