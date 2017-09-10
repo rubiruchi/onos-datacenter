@@ -47,6 +47,7 @@ import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.flow.criteria.Criterion;
 import org.onosproject.net.flow.criteria.EthCriterion;
+import org.onosproject.net.flow.criteria.IPCriterion;
 import org.onosproject.net.flow.instructions.Instruction;
 import org.onosproject.net.flow.instructions.Instructions;
 import org.onosproject.net.flowobjective.DefaultForwardingObjective;
@@ -211,6 +212,11 @@ public class ReactiveForwarding {
     private boolean filterIpv6 = true;
 
 
+    // Host Migration
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected MigrateHostProvider migrateHostService;
+
+
     @Activate
     public void activate(ComponentContext context) {
         KryoNamespace.Builder metricSerializer = KryoNamespace.newBuilder()
@@ -256,11 +262,69 @@ public class ReactiveForwarding {
     }
 
     /**
+     * Handle host migration.
+     */
+    public boolean migrate(IpAddress srcIP, IpAddress dstIP) {
+        // Check if Migration Service handled request correctly
+        if (migrateHostService.migrate(srcIP, dstIP)) {
+            log.info("Migration possible. Cleaning up all Flow Rules related to source host.");
+
+            // then clean up all rules related to the source host
+            cleanAppFlowRulesByIP(srcIP, new Criterion.Type[] {
+                    Criterion.Type.IPV4_DST,
+                    Criterion.Type.IPV6_DST
+            });
+
+            cleanAppFlowRules();
+
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Cleans up all the Flow Rules installed by this app.
      */
     public void cleanAppFlowRules() {
         flowRuleService.removeFlowRulesById(appId);
     }
+
+    /**
+     * Redirects IP traffic from source Host to destination Host.
+     */
+    public void cleanAppFlowRulesByIP(IpAddress targetIP, Criterion.Type[] criteria) {
+
+        // Convert slow-access array to faster collection
+        Map<Criterion.Type, Boolean> criteriaMap = new ConcurrentHashMap<>();
+        for (Criterion.Type c : criteria) {
+            criteriaMap.put(c, true);
+        }
+
+        log.info("Criteria Map: " + criteriaMap);
+
+        // Clean up all the Flow Rules installed by this app involving the source host as destination
+        for (FlowEntry r : flowRuleService.getFlowEntriesById(appId)) {
+
+            for (Instruction i : r.treatment().allInstructions()) {
+                if (i.type() == Instruction.Type.OUTPUT) {
+                    // check if the flow has matching criterion
+                    for (Criterion cr : r.selector().criteria()) {
+                        log.info("Criterion: " + cr);
+                        if ((criteriaMap.containsKey(cr.type())) &&
+                            ((IPCriterion) cr).ip().equals(targetIP)) {
+
+                            flowRuleService.removeFlowRules((FlowRule) r);
+                            log.info("Removed flow rule " + r);
+
+                        }
+                        else log.info("Criterion: not matching");
+                    }
+                }
+            }
+        }
+
+    }
+
 
     /**
      * Request packet in via packet service.
@@ -450,7 +514,6 @@ public class ReactiveForwarding {
         log.info("Configured. Flow Priority is configured to {}", flowPriority);
     }
 
-
     /**
      * Packet processor responsible for forwarding packets along their paths.
      */
@@ -473,16 +536,17 @@ public class ReactiveForwarding {
             }
 
             MacAddress macAddress = ethPkt.getSourceMAC();
-            ReactiveForwardMetrics macMetrics = null;
-            macMetrics = createCounter(macAddress);
+            ReactiveForwardMetrics macMetrics = createCounter(macAddress);
             inPacket(macMetrics);
+            log.info("Destination MAC: " + ethPkt.getDestinationMAC());
 
             // Check if hosts are allowed to communicate
 
-            boolean filter = false;
-            IpAddress ipSrcAddr;
-            IpAddress ipDestAddr;
+            boolean filter = false, redirect = false, matchSrc = false, matchDst = false;
+            IpAddress ipSrcAddr, ipDestAddr, ipRedirAddr;
+            TrafficTreatment.Builder trafficTreatment = DefaultTrafficTreatment.builder();
             TrafficSelector.Builder selectorBuilder = DefaultTrafficSelector.builder();
+            //Host migrationSource, ;
 
             // Should we filter IPv4 traffic?
             if (filterIpv4 && ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
@@ -490,67 +554,207 @@ public class ReactiveForwarding {
                 ipSrcAddr = IpAddress.valueOf(ipv4Packet.getSourceAddress());
                 ipDestAddr = IpAddress.valueOf(ipv4Packet.getDestinationAddress());
 
+
                 if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
                     filter = true;
+                    matchSrc = matchDst = true;
 
-                    Ip4Prefix matchIpv4SrcPrefix =
-                            Ip4Prefix.valueOf(ipv4Packet.getSourceAddress(),
-                                    Ip4Prefix.MAX_MASK_LENGTH);
-                    Ip4Prefix matchIpv4DstPrefix =
-                            Ip4Prefix.valueOf(ipv4Packet.getDestinationAddress(),
-                                    Ip4Prefix.MAX_MASK_LENGTH);
+                    log.info("Dropping Flow from host {} to host {} as they belong to different tenants.", ipSrcAddr, ipDestAddr);
 
-                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV4)
-                            .matchIPSrc(matchIpv4SrcPrefix)
-                            .matchIPDst(matchIpv4DstPrefix);
+                }
+                else {
+                    ipRedirAddr = migrateHostService.hasMigrated(ipDestAddr);
+                    if (ipRedirAddr != null) {
+                        redirect = true;
+                        matchDst = true;
 
+                        log.warn("Redirecting Incoming Flow to migrated host {} to new host {}", ipDestAddr, ipRedirAddr);
+
+                        Host destinationHost;
+
+                        Set<Host> hosts = hostService.getHostsByIp(ipDestAddr);
+
+                        // The request couldn't be resolved.
+                        // Flood the request on all ports except the incoming port.
+                        if (hosts.isEmpty()) {
+                            flood(context, macMetrics);
+                            return;
+                        }
+                        else {
+                            destinationHost = hosts.iterator().next();
+
+                            Set<Path> paths =
+                                    topologyService.getPaths(topologyService.currentTopology(),
+                                            pkt.receivedFrom().deviceId(),
+                                            destinationHost.location().deviceId());
+                            if (paths.isEmpty()) {
+                                // If there are no paths, flood and bail.
+                                flood(context, macMetrics);
+                                return;
+                            }
+
+                            // Otherwise, pick a path that does not lead back to where we
+                            // came from; if no such path, flood and bail.
+                            Path path = pickForwardPathIfPossible(paths, pkt.receivedFrom().port());
+                            if (path == null) {
+                                log.warn("Don't know where to go from here {} for {} -> {}",
+                                        pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
+                                flood(context, macMetrics);
+                                return;
+                            }
+
+                            trafficTreatment.setEthDst(destinationHost.mac()).setIpDst(ipRedirAddr).setOutput(path.src().port());
+                        }
+
+                    }
+
+                    ipRedirAddr = migrateHostService.isMigrated(ipSrcAddr);
+
+                    if (ipRedirAddr != null) {
+                        redirect = true;
+                        matchSrc = true;
+
+                        log.warn("Changing source of Outgoing Flow from migrated host {} to old host {}", ipSrcAddr, ipRedirAddr);
+
+                        context.treatmentBuilder().setIpSrc(ipRedirAddr);
+                        trafficTreatment.setIpSrc(ipRedirAddr);
+
+                        Host sourceHost;
+                        Set<Host> hosts = hostService.getHostsByIp(ipSrcAddr);
+                        if (hosts.isEmpty()) {
+                            context.treatmentBuilder().setEthSrc(MacAddress.BROADCAST);
+                            trafficTreatment.setEthSrc(MacAddress.BROADCAST);
+                        }
+                        else {
+                            sourceHost = hostService.getHostsByIp(ipSrcAddr).iterator().next();
+                            context.treatmentBuilder().setEthSrc(sourceHost.mac());
+                            trafficTreatment.setEthSrc(sourceHost.mac());
+                        }
+
+
+                        Host destinationHost;
+                        hosts = hostService.getHostsByIp(ipDestAddr);
+
+                        // The request couldn't be resolved.
+                        // Flood the request on all ports except the incoming port.
+                        if (hosts.isEmpty()) {
+                            flood(context, macMetrics);
+                            return;
+                        }
+                        else {
+                            destinationHost = hosts.iterator().next();
+
+                            Set<Path> paths =
+                                    topologyService.getPaths(topologyService.currentTopology(),
+                                            pkt.receivedFrom().deviceId(),
+                                            destinationHost.location().deviceId());
+                            if (paths.isEmpty()) {
+                                // If there are no paths, flood and bail.
+                                flood(context, macMetrics);
+                                return;
+                            }
+
+                            // Otherwise, pick a path that does not lead back to where we
+                            // came from; if no such path, flood and bail.
+                            Path path = pickForwardPathIfPossible(paths, pkt.receivedFrom().port());
+                            if (path == null) {
+                                log.warn("Don't know where to go from here {} for {} -> {}",
+                                        pkt.receivedFrom(), ethPkt.getSourceMAC(), ethPkt.getDestinationMAC());
+                                flood(context, macMetrics);
+                                return;
+                            }
+
+                            trafficTreatment.setOutput(path.src().port());
+                        }
+
+                    }
+                }
+
+                if (filter || redirect) {
+                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV4);
+
+                    if (matchSrc) {
+                        IpPrefix matchIpSrcPrefix =
+                                Ip4Prefix.valueOf(ipSrcAddr,
+                                        Ip4Prefix.MAX_MASK_LENGTH);
+
+                        selectorBuilder.matchIPSrc(matchIpSrcPrefix);
+                    }
+
+                    if (matchDst) {
+                        IpPrefix matchIpDstPrefix =
+                                Ip4Prefix.valueOf(ipDestAddr,
+                                        Ip4Prefix.MAX_MASK_LENGTH);
+
+                        selectorBuilder.matchIPDst(matchIpDstPrefix);
+                    }
                 }
             }
 
             // Should we filter IPv6 traffic?
-            if (filterIpv6 && ethPkt.getEtherType() == Ethernet.TYPE_IPV6) {
-                IPv6 ipv6Packet = (IPv6) ethPkt.getPayload();
-                ipSrcAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getSourceAddress());
-                ipDestAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getDestinationAddress());
-
-                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
-                    filter = true;
-
-                    Ip6Prefix matchIpv6SrcPrefix =
-                            Ip6Prefix.valueOf(ipv6Packet.getSourceAddress(),
-                                    Ip6Prefix.MAX_MASK_LENGTH);
-                    Ip6Prefix matchIpv6DstPrefix =
-                            Ip6Prefix.valueOf(ipv6Packet.getDestinationAddress(),
-                                    Ip6Prefix.MAX_MASK_LENGTH);
-
-                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV6)
-                            .matchIPSrc(matchIpv6SrcPrefix)
-                            .matchIPDst(matchIpv6DstPrefix);
-                }
-            }
+//            if (filterIpv6 && ethPkt.getEtherType() == Ethernet.TYPE_IPV6) {
+//                IPv6 ipv6Packet = (IPv6) ethPkt.getPayload();
+//                ipSrcAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getSourceAddress());
+//                ipDestAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getDestinationAddress());
+//
+//                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
+//                    filter = true;
+//                    matchSrc = matchDst = true;
+//
+//                    log.info("Dropping Flow from host {} to host {} as they belong to different tenants.", ipSrcAddr, ipDestAddr);
+//                }
+//                else {
+//                    ipRedirAddr = migrateHostService.hasMigrated(ipDestAddr);
+//                    if (ipRedirAddr != null) {
+//                        redirect = true;
+//                        matchSrc = true;
+//
+//                        trafficTreatment.setIpDst(ipRedirAddr);
+//                        log.warn("Redirecting Incoming Flow to migrated host {} to new host {}", ipDestAddr, ipRedirAddr);
+//                    }
+//
+//                    ipRedirAddr = migrateHostService.isMigrated(ipSrcAddr);
+//
+//                    if (ipRedirAddr != null) {
+//                        redirect = true;
+//                        matchDst = true;
+//
+//                        trafficTreatment.setIpSrc(ipRedirAddr);
+//                        log.warn("Redirecting Outgoing Flow from migrated host {} to new host {}", ipSrcAddr, ipRedirAddr);
+//                    }
+//                }
+//
+//                if (filter || redirect) {
+//                    selectorBuilder.matchEthType(Ethernet.TYPE_IPV4);
+//
+//                    if (matchSrc) {
+//                        IpPrefix matchIpSrcPrefix =
+//                                Ip6Prefix.valueOf(ipSrcAddr,
+//                                        Ip6Prefix.MAX_MASK_LENGTH);
+//
+//                        selectorBuilder.matchIPSrc(matchIpSrcPrefix);
+//                    }
+//
+//                    if (matchDst) {
+//                        IpPrefix matchIpDstPrefix =
+//                                Ip6Prefix.valueOf(ipDestAddr,
+//                                        Ip6Prefix.MAX_MASK_LENGTH);
+//
+//                        selectorBuilder.matchIPDst(matchIpDstPrefix);
+//                    }
+//                }
+//            }
 
             // Host are not allowed to communicate
             if (filter) {
+                trafficTreatment = trafficTreatment.drop();
+                handleFlow(context.inPacket().receivedFrom().deviceId(), selectorBuilder, trafficTreatment);
 
-
-                TrafficTreatment drop = DefaultTrafficTreatment.builder()
-                        .drop().build();
-
-                flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
-                        .withSelector(selectorBuilder.build())
-                        .withTreatment(drop)
-                        .withPriority(flowPriority)
-                        .withFlag(ForwardingObjective.Flag.VERSATILE)
-                        .fromApp(appId)
-                        //.makeTemporary(flowTimeout)
-                        .add()
-                );
-
+                droppedPacket(macMetrics);
                 return;
             }
             // else: hosts belong to the same Tenant (or IPv* filtering is disabled).
             // Proceed with regular packet processing
-
 
             // Bail if this is deemed to be a control packet.
             if (isControlPacket(ethPkt)) {
@@ -581,6 +785,7 @@ public class ReactiveForwarding {
 
             // Do we know who this is for? If not, flood and bail.
             Host dst = hostService.getHost(id);
+
             if (dst == null) {
                 flood(context, macMetrics);
                 return;
@@ -617,9 +822,58 @@ public class ReactiveForwarding {
                 return;
             }
 
+            if (redirect) {
+
+                handleFlow(context.inPacket().receivedFrom().deviceId(), selectorBuilder, trafficTreatment);
+
+                /*flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
+                        .withSelector(selectorBuilder.build())
+                        .withTreatment(trafficTreatment.build())
+                        .withPriority(flowPriority)
+                        .withFlag(ForwardingObjective.Flag.VERSATILE)
+                        .fromApp(appId)
+                        //.makeTemporary(flowTimeout)
+                        .add()
+                );*/
+
+                forwardPacket(macMetrics);
+
+                //
+                // If packetOutOfppTable
+                //  Send packet back to the OpenFlow pipeline to match installed flow
+                // Else
+                //  Send packet direction on the appropriate port
+                //
+                /*if (packetOutOfppTable) {
+                    packetOut(context, PortNumber.TABLE, macMetrics);
+                } else {
+                    packetOut(context, portNumber, macMetrics);
+                }*/
+
+                return;
+            }
+
             // Otherwise forward and be done with it.
             installRule(context, path.src().port(), macMetrics);
         }
+
+    }
+
+    private void handleFlow(DeviceId deviceId, TrafficSelector.Builder selectorBuilder, TrafficTreatment.Builder treatmentBuilder) {
+        handleFlow(deviceId, selectorBuilder, treatmentBuilder, false);
+    }
+
+    private void handleFlow(DeviceId deviceId, TrafficSelector.Builder selectorBuilder, TrafficTreatment.Builder treatmentBuilder, boolean makeTemporary) {
+        ForwardingObjective.Builder forwardingObjectiveBuilder = DefaultForwardingObjective.builder()
+                .withSelector(selectorBuilder.build())
+                .withTreatment(treatmentBuilder.build())
+                .withPriority(flowPriority)
+                .withFlag(ForwardingObjective.Flag.VERSATILE)
+                .fromApp(appId);
+
+        if (makeTemporary) forwardingObjectiveBuilder.makeTemporary(flowTimeout);
+
+        flowObjectiveService.forward(deviceId, forwardingObjectiveBuilder.add());
 
     }
 
@@ -672,6 +926,7 @@ public class ReactiveForwarding {
     private void packetOut(PacketContext context, PortNumber portNumber, ReactiveForwardMetrics macMetrics) {
         replyPacket(macMetrics);
         context.treatmentBuilder().setOutput(portNumber);
+        log.info("Treatment applied: " + context.treatmentBuilder().build().allInstructions());
         context.send();
     }
 
@@ -792,21 +1047,12 @@ public class ReactiveForwarding {
                 }
             }
         }
-        TrafficTreatment treatment = DefaultTrafficTreatment.builder()
-                .setOutput(portNumber)
-                .build();
 
-        ForwardingObjective forwardingObjective = DefaultForwardingObjective.builder()
-                .withSelector(selectorBuilder.build())
-                .withTreatment(treatment)
-                .withPriority(flowPriority)
-                .withFlag(ForwardingObjective.Flag.VERSATILE)
-                .fromApp(appId)
-                .makeTemporary(flowTimeout)
-                .add();
+        TrafficTreatment.Builder treatmentBuilder = DefaultTrafficTreatment.builder()
+                .setOutput(portNumber);
 
-        flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(),
-                                     forwardingObjective);
+        handleFlow(context.inPacket().receivedFrom().deviceId(), selectorBuilder, treatmentBuilder, true);
+
         forwardPacket(macMetrics);
         //
         // If packetOutOfppTable

@@ -14,12 +14,6 @@ import org.onosproject.incubator.net.virtual.TenantId;
  */
 public interface TenantsMapService {
 
-    /**
-     * Get the endpoints of the host-to-host intents that were installed.
-     *
-     * @return maps of source to destination
-     */
-
     Map<IpAddress, TenantId> getTenants();
 
     void updateTenants();

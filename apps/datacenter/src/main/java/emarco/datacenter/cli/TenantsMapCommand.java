@@ -22,6 +22,9 @@ import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
 import org.onosproject.cli.AbstractShellCommand;
 
+/**
+ *
+ */
 @Command(scope = "emarco.datacenter", name = "tenantsmap", description = "Updates the Tenants Map")
 public class TenantsMapCommand extends AbstractShellCommand {
 
@@ -41,7 +44,7 @@ public class TenantsMapCommand extends AbstractShellCommand {
             print("Host %s belongs to Tenant %s", ip, tenant);
         });
 
-        reactiveForwarding = AbstractShellCommand.get(ReactiveForwarding.class);
+        reactiveForwarding = get(ReactiveForwarding.class);
         print("Clearing up past flow rules.");
         reactiveForwarding.cleanAppFlowRules();
     }
