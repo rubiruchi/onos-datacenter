@@ -206,6 +206,17 @@ public class ReactiveForwarding implements TenantsMapService {
     // We're using a ConcurrentHashMap since it's the fastest Collection in get operations
     private final Map<IpAddress, TenantId> hostTenantMap = new ConcurrentHashMap<>();
 
+    // Tenants config
+
+    @Property(name = "filterIpv4", boolValue = true,
+            label = "Tenants: enable IPv4 filtering; default is true")
+    private boolean filterIpv4 = true;
+
+    @Property(name = "filterIpv6", boolValue = true,
+            label = "Tenants: enable IPv6 filtering; default is true")
+    private boolean filterIpv6 = true;
+
+
     @Activate
     public void activate(ComponentContext context) {
         KryoNamespace.Builder metricSerializer = KryoNamespace.newBuilder()
@@ -228,7 +239,7 @@ public class ReactiveForwarding implements TenantsMapService {
         requestIntercepts();
 
         // Load Tenants information
-        //updateTenants();
+        updateTenants();
 
         log.info("Started", appId.id());
     }
@@ -515,6 +526,77 @@ public class ReactiveForwarding implements TenantsMapService {
             ReactiveForwardMetrics macMetrics = null;
             macMetrics = createCounter(macAddress);
             inPacket(macMetrics);
+
+            // Check if hosts are allowed to communicate
+
+            boolean filter = false;
+            IpAddress ipSrcAddr;
+            IpAddress ipDestAddr;
+            TrafficSelector selector = null;
+
+            // Should we filter IPv4 traffic?
+            if (filterIpv4 && ethPkt.getEtherType() == Ethernet.TYPE_IPV4) {
+                IPv4 ipv4Packet = (IPv4) ethPkt.getPayload();
+                ipSrcAddr = IpAddress.valueOf(ipv4Packet.getSourceAddress());
+                ipDestAddr = IpAddress.valueOf(ipv4Packet.getDestinationAddress());
+
+                if (!canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
+                    filter = true;
+
+                    Ip4Prefix matchIp4SrcPrefix =
+                            Ip4Prefix.valueOf(ipv4Packet.getSourceAddress(),
+                                    Ip4Prefix.MAX_MASK_LENGTH);
+                    Ip4Prefix matchIp4DstPrefix =
+                            Ip4Prefix.valueOf(ipv4Packet.getDestinationAddress(),
+                                    Ip4Prefix.MAX_MASK_LENGTH);
+
+                    selector = DefaultTrafficSelector.builder()
+                            .matchIPSrc(matchIp4SrcPrefix).matchIPDst(matchIp4DstPrefix).build();
+                }
+            }
+
+            // Should we filter IPv6 traffic?
+            if (filterIpv6 && ethPkt.getEtherType() == Ethernet.TYPE_IPV6) {
+                IPv6 ipv6Packet = (IPv6) ethPkt.getPayload();
+                ipSrcAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getSourceAddress());
+                ipDestAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getDestinationAddress());
+
+                if (!canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
+                    filter = true;
+
+                    Ip6Prefix matchIp6SrcPrefix =
+                            Ip6Prefix.valueOf(ipv6Packet.getSourceAddress(),
+                                    Ip6Prefix.MAX_MASK_LENGTH);
+                    Ip6Prefix matchIp6DstPrefix =
+                            Ip6Prefix.valueOf(ipv6Packet.getDestinationAddress(),
+                                    Ip6Prefix.MAX_MASK_LENGTH);
+
+                    selector = DefaultTrafficSelector.builder()
+                            .matchIPSrc(matchIp6SrcPrefix).matchIPDst(matchIp6DstPrefix).build();
+                }
+            }
+
+            // Host are not allowed to communicate
+            if (filter) {
+                //private void banPings(DeviceId deviceId, MacAddress src, MacAddress dst) {
+
+                TrafficTreatment drop = DefaultTrafficTreatment.builder()
+                        .drop().build();
+
+                flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
+                        .fromApp(appId)
+                        .withSelector(selector)
+                        .withTreatment(drop)
+                        .withFlag(ForwardingObjective.Flag.VERSATILE)
+                        .withPriority(flowPriority)
+                        //.makeTemporary(TIMEOUT_SEC)
+                        .add());
+
+                return;
+            }
+            // else: hosts belong to the same Tenant (or IPv* filtering is disabled).
+            // Proceed with regular packet processing
+
 
             // Bail if this is deemed to be a control packet.
             if (isControlPacket(ethPkt)) {
