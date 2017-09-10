@@ -46,4 +46,18 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
+
+*~
+*.class
+.classpath
+.project
+.pydevproject
+.settings
+.javacp*
+.checkstyle
+target
+*.iml
+*.pyc
 .idea
+*.DS_Store
+.buckd
