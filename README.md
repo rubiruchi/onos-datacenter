@@ -9,14 +9,14 @@ Based on this [tutorial](https://www.dropbox.com/sh/57jf7ki6a1e9s0r/AAAeB2kmHkT7
 
 ### Requirements:
 
-- ONOS v1.10.3
+- ONOS v1.10.4
 - Mininet v2.2.2
 
 ### Build:
 
 ```
-git clone https://github.com/sdnwiselab/ONOS_Datacenter_app.git 
-cd ONOS_Datacenter_app/datacenter 
+git clone https://github.com/sdnwiselab/ONOS_Datacenter_app.git
+cd ONOS_Datacenter_app/datacenter
 mvn clean install
 ```
 
@@ -50,6 +50,6 @@ To migrate an host.
 
 ### About:
 
-Tested with ONOS 1.10.3 
+Tested with ONOS 1.10.4
 
 Forked from [eMarco](https://github.com/eMarco/ONOS_Datacenter_app)
