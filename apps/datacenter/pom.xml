@@ -19,62 +19,168 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <parent>
-        <groupId>org.onosproject</groupId>
-        <artifactId>onos-apps</artifactId>
-        <version>1.10.0</version>
-    </parent>
-
-    <artifactId>emarco.datacenter</artifactId>
+    <groupId>com.github.emarco</groupId>
+    <artifactId>datacenter</artifactId>
+    <version>1.0-SNAPSHOT</version>
     <packaging>bundle</packaging>
 
-    <description>Datacenter app</description>
+    <description>ONOS OSGi bundle archetype</description>
+    <url>http://onosproject.org</url>
 
     <properties>
-        <onos.app.name>emarco.datacenter</onos.app.name>
-        <onos.app.title>Reactive Datacenter App</onos.app.title>
-        <onos.app.category>Traffic Steering</onos.app.category>
-        <onos.app.url></onos.app.url>
-        <onos.app.readme></onos.app.readme>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <onos.version>1.10.4-SNAPSHOT</onos.version>
+        <onos.app.name>com.github.emarco</onos.app.name>
+        <onos.app.title>Reactive Datacenter</onos.app.title>
+        <onos.app.origin>Marco</onos.app.origin>
+        <onos.app.category>default</onos.app.category>
+        <onos.app.url>https://github.com/eMarco/ONOS_Datacenter_app</onos.app.url>
+        <onos.app.readme>Reactive Datacenter</onos.app.readme>
     </properties>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.osgi</groupId>
-            <artifactId>org.osgi.compendium</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.onosproject</groupId>
-            <artifactId>onos-core-serializers</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+   <dependencies>
         <dependency>
             <groupId>org.onosproject</groupId>
             <artifactId>onos-api</artifactId>
+            <version>${onos.version}</version>
         </dependency>
+
         <dependency>
             <groupId>org.onosproject</groupId>
-            <artifactId>onos-core-primitives</artifactId>
-            <version>${project.version}</version>
+            <artifactId>onlab-osgi</artifactId>
+            <version>${onos.version}</version>
         </dependency>
+
+
+       <dependency>
+           <groupId>org.onosproject</groupId>
+           <artifactId>onos-core-serializers</artifactId>
+           <version>${onos.version}</version>
+       </dependency>
+
+       <dependency>
+           <groupId>org.onosproject</groupId>
+           <artifactId>onos-core-primitives</artifactId>
+           <version>${onos.version}</version>
+       </dependency>
+
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.12</version>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.onosproject</groupId>
-            <artifactId>onos-cli</artifactId>
-            <version>${project.version}</version>
+            <artifactId>onos-api</artifactId>
+            <version>${onos.version}</version>
+            <scope>test</scope>
+            <classifier>tests</classifier>
         </dependency>
-        <dependency>
-            <groupId>org.apache.karaf.shell</groupId>
-            <artifactId>org.apache.karaf.shell.console</artifactId>
-        </dependency>
+
         <dependency>
             <groupId>org.apache.felix</groupId>
             <artifactId>org.apache.felix.scr.annotations</artifactId>
+            <version>1.9.12</version>
+            <scope>provided</scope>
         </dependency>
+
         <dependency>
-            <groupId>org.onosproject</groupId>
-            <artifactId>onos-core-net</artifactId>
-            <version>1.10.2-SNAPSHOT</version>
-        </dependency>
+      <groupId>org.onosproject</groupId>
+      <artifactId>onos-cli</artifactId>
+      <version>${onos.version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+        <dependency>
+      <groupId>org.osgi</groupId>
+      <artifactId>org.osgi.core</artifactId>
+      <version>5.0.0</version>
+      <scope>provided</scope>
+    </dependency>
+
+
+       <dependency>
+           <groupId>org.osgi</groupId>
+           <artifactId>org.osgi.compendium</artifactId>
+           <version>5.0.0</version>
+       </dependency>
+
+
+        <dependency>
+      <groupId>org.apache.karaf.shell</groupId>
+      <artifactId>org.apache.karaf.shell.console</artifactId>
+      <version>3.0.8</version>
+      <scope>provided</scope>
+    </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.felix</groupId>
+                <artifactId>maven-bundle-plugin</artifactId>
+                <version>3.0.1</version>
+                <extensions>true</extensions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>2.5.1</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.felix</groupId>
+                <artifactId>maven-scr-plugin</artifactId>
+                <version>1.21.0</version>
+                <executions>
+                    <execution>
+                        <id>generate-scr-srcdescriptor</id>
+                        <goals>
+                            <goal>scr</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <supportedProjectTypes>
+                        <supportedProjectType>bundle</supportedProjectType>
+                        <supportedProjectType>war</supportedProjectType>
+                    </supportedProjectTypes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.onosproject</groupId>
+                <artifactId>onos-maven-plugin</artifactId>
+                <version>1.10</version>
+                <executions>
+                    <execution>
+                        <id>cfg</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>cfg</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>swagger</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>swagger</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>app</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>app</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
+
