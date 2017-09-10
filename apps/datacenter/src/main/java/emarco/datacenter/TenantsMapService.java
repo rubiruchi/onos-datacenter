@@ -8,7 +8,6 @@ import java.util.Map;
 import org.onlab.packet.IpAddress;
 import org.onosproject.incubator.net.virtual.TenantId;
 
-
 /**
  * TenantsMapService
  * Keeps track of the tenant each host belongs to.

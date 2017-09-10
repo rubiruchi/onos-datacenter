@@ -91,7 +91,7 @@ import java.util.stream.Stream;
  */
 @Component(immediate = true)
 @Service(value = ReactiveForwarding.class)
-public class ReactiveForwarding implements TenantsMapService {
+public class ReactiveForwarding {
 
     private static final int DEFAULT_TIMEOUT = 10;
     private static final int DEFAULT_PRIORITY = 10;
@@ -196,15 +196,9 @@ public class ReactiveForwarding implements TenantsMapService {
     private final TopologyListener topologyListener = new InternalTopologyListener();
 
 
-    // Tenants file path
-    private static final String DEFAULT_TENANTS_FILE = "./tenants.csv";
-
-    @Property(name = "tenantsFile", value = DEFAULT_TENANTS_FILE,
-            label = "Enable record metrics for reactive forwarding")
-    private String tenantsFile = DEFAULT_TENANTS_FILE;
-    // Tenants Map:
-    // We're using a ConcurrentHashMap since it's the fastest Collection in get operations
-    private final Map<IpAddress, TenantId> hostTenantMap = new ConcurrentHashMap<>();
+    // Tenants
+    @Reference(cardinality = ReferenceCardinality.MANDATORY_UNARY)
+    protected TenantsMapProvider tenantsMapService;
 
     // Tenants config
 
@@ -239,7 +233,7 @@ public class ReactiveForwarding implements TenantsMapService {
         requestIntercepts();
 
         // Load Tenants information
-        updateTenants();
+        tenantsMapService.updateTenants();
 
         log.info("Started", appId.id());
     }
@@ -260,58 +254,6 @@ public class ReactiveForwarding implements TenantsMapService {
         readComponentConfiguration(context);
         requestIntercepts();
     }
-
-    @Override
-    public Map<IpAddress, TenantId> getTenants() {
-        return hostTenantMap;
-    }
-
-    /**
-     * Read tenants from file and update cache
-     */
-    @Override
-    public void updateTenants() {
-        updateTenants(tenantsFile);
-    }
-
-    @Override
-    public void updateTenants(String inputTenantsFile) {
-        log.info("UpdateTenants: triggered.");
-        // Clear up all entries in the map
-        hostTenantMap.clear();
-
-        java.nio.file.Path currentRelativePath = Paths.get("");
-        String spath = currentRelativePath.toAbsolutePath().toString();
-        System.out.println("Current relative path is: " + spath);
-
-        // Read tenants file
-        if (inputTenantsFile == null) inputTenantsFile = tenantsFile;
-        java.nio.file.Path path = Paths.get(inputTenantsFile);
-        try (Stream<String> lines = Files.lines(path)) {
-            lines.forEach(s -> {
-
-                String words[] = s.split(",");
-                TenantId tenant = TenantId.tenantId(words[0]);
-
-                for (int i = 1; i < words.length; i++) {
-                    hostTenantMap.put(IpAddress.valueOf(words[i]), tenant);
-                }
-
-            });
-        } catch (IOException ex) {
-            log.error("UpdateTenants: " + ex.toString());
-        }
-
-        log.info("UpdateTenants Map: " + hostTenantMap.toString());
-
-        log.info("UpdateTenants: done!");
-    }
-
-    @Override
-    public boolean canHostsCommunicate(IpAddress h1, IpAddress h2) {
-        return (hostTenantMap.get(h1) == hostTenantMap.get(h2));
-    }
-
 
     /**
      * Request packet in via packet service.
@@ -501,6 +443,7 @@ public class ReactiveForwarding implements TenantsMapService {
         log.info("Configured. Flow Priority is configured to {}", flowPriority);
     }
 
+
     /**
      * Packet processor responsible for forwarding packets along their paths.
      */
@@ -540,18 +483,19 @@ public class ReactiveForwarding implements TenantsMapService {
                 ipSrcAddr = IpAddress.valueOf(ipv4Packet.getSourceAddress());
                 ipDestAddr = IpAddress.valueOf(ipv4Packet.getDestinationAddress());
 
-                if (!canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
+                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
                     filter = true;
 
-                    Ip4Prefix matchIp4SrcPrefix =
+                    Ip4Prefix matchIpSrcPrefix =
                             Ip4Prefix.valueOf(ipv4Packet.getSourceAddress(),
                                     Ip4Prefix.MAX_MASK_LENGTH);
-                    Ip4Prefix matchIp4DstPrefix =
+                    Ip4Prefix matchIpDstPrefix =
                             Ip4Prefix.valueOf(ipv4Packet.getDestinationAddress(),
                                     Ip4Prefix.MAX_MASK_LENGTH);
 
                     selector = DefaultTrafficSelector.builder()
-                            .matchIPSrc(matchIp4SrcPrefix).matchIPDst(matchIp4DstPrefix).build();
+                            .matchIPSrc(matchIpSrcPrefix).matchIPDst(matchIpDstPrefix).build();
+
                 }
             }
 
@@ -561,36 +505,37 @@ public class ReactiveForwarding implements TenantsMapService {
                 ipSrcAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getSourceAddress());
                 ipDestAddr = IpAddress.valueOf(IpAddress.Version.INET6, ipv6Packet.getDestinationAddress());
 
-                if (!canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
+                if (!tenantsMapService.canHostsCommunicate(ipSrcAddr, ipDestAddr)) {
                     filter = true;
 
-                    Ip6Prefix matchIp6SrcPrefix =
+                    Ip6Prefix matchIpSrcPrefix =
                             Ip6Prefix.valueOf(ipv6Packet.getSourceAddress(),
                                     Ip6Prefix.MAX_MASK_LENGTH);
-                    Ip6Prefix matchIp6DstPrefix =
+                    Ip6Prefix matchIpDstPrefix =
                             Ip6Prefix.valueOf(ipv6Packet.getDestinationAddress(),
                                     Ip6Prefix.MAX_MASK_LENGTH);
 
                     selector = DefaultTrafficSelector.builder()
-                            .matchIPSrc(matchIp6SrcPrefix).matchIPDst(matchIp6DstPrefix).build();
+                            .matchIPSrc(matchIpSrcPrefix).matchIPDst(matchIpDstPrefix).build();
                 }
             }
 
             // Host are not allowed to communicate
             if (filter) {
-                //private void banPings(DeviceId deviceId, MacAddress src, MacAddress dst) {
+
 
                 TrafficTreatment drop = DefaultTrafficTreatment.builder()
                         .drop().build();
 
                 flowObjectiveService.forward(context.inPacket().receivedFrom().deviceId(), DefaultForwardingObjective.builder()
-                        .fromApp(appId)
                         .withSelector(selector)
                         .withTreatment(drop)
-                        .withFlag(ForwardingObjective.Flag.VERSATILE)
                         .withPriority(flowPriority)
-                        //.makeTemporary(TIMEOUT_SEC)
-                        .add());
+                        .withFlag(ForwardingObjective.Flag.VERSATILE)
+                        .fromApp(appId)
+                        .makeTemporary(flowTimeout)
+                        .add()
+                );
 
                 return;
             }

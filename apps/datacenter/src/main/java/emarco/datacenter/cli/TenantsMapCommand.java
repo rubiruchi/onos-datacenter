@@ -16,10 +16,6 @@
 
 package emarco.datacenter.cli;
 
-import emarco.datacenter.TenantsMapService;
-import org.apache.felix.scr.annotations.Component;
-import org.apache.felix.scr.annotations.Reference;
-import org.apache.felix.scr.annotations.ReferenceCardinality;
 import org.apache.karaf.shell.commands.Argument;
 import org.apache.karaf.shell.commands.Command;
 import org.onosproject.cli.AbstractShellCommand;
@@ -30,11 +26,11 @@ public class TenantsMapCommand extends AbstractShellCommand {
     @Argument(index = 0, name = "filePath", description = "Path of the Tenants file", required = false, multiValued = false)
     private String filePath = null;
 
-    protected TenantsMapService tenantsMapService;
+    protected TenantsMapProvider tenantsMapService;
 
     @Override
     protected void execute() {
-        tenantsMapService = AbstractShellCommand.get(ReactiveForwarding.class);
+        tenantsMapService = AbstractShellCommand.get(TenantsMapProvider.class);
         tenantsMapService.updateTenants(filePath);
 
         tenantsMapService.getTenants().forEach((ip, tenant) -> {
