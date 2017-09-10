@@ -18,7 +18,6 @@ Based on this [tutorial](https://www.dropbox.com/sh/57jf7ki6a1e9s0r/AAAeB2kmHkT7
 git clone https://github.com/sdnwiselab/ONOS_Datacenter_app.git 
 cd ONOS_Datacenter_app/datacenter 
 mvn clean install
-
 ```
 
 ### Install:
